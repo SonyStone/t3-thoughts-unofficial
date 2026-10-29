@@ -34,7 +34,7 @@ export default function TagsPage() {
       <header class="page-head">
         <h1>{t().tagsPage.title}</h1>
         <p class="muted">
-          {t().tagsPage.help} <code>model:* -product:codex</code>
+          {t().tagsPage.help} <code class="nowrap">model:* -product:codex</code>
         </p>
       </header>
 

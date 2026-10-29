@@ -227,10 +227,12 @@ function XStep(props: {
   metrics?: Metrics;
   above?: string;
   focused?: boolean;
+  /** the post being answered, shown for context in the feed: shorter, without the action bar */
+  context?: boolean;
   children?: any;
 }) {
   return (
-    <article class={{ "x-post": true, threaded: props.line, focused: !!props.focused }} {...openOnX(props.href)}>
+    <article class={{ "x-post": true, threaded: props.line, focused: !!props.focused, context: !!props.context }} {...openOnX(props.href)}>
       <Show when={props.above}>
         <div class="x-social">
           <Icon name="repost" />
@@ -265,7 +267,9 @@ function XStep(props: {
             </div>
           )}
         </Show>
-        <XActions metrics={props.metrics} url={props.href} />
+        <Show when={!props.context}>
+          <XActions metrics={props.metrics} url={props.href} />
+        </Show>
       </div>
     </article>
   );
@@ -345,7 +349,7 @@ export function XThread(props: { entry: Entry }) {
 
 /**
  * The latest post of an entry, cut to a few lines for the feed. The post it answers sits
- * above as one muted line, the way X shows context in a timeline.
+ * above it on the thread line, as X shows a reply with its context.
  */
 export function XCompact(props: { item: Item; lines?: number }) {
   const parent = () => (props.item.parent && props.item.parent !== "unavailable" ? props.item.parent : undefined);
@@ -356,14 +360,7 @@ export function XCompact(props: { item: Item; lines?: number }) {
   return (
     <div class="x-card compact" style={{ "--x-lines": String(props.lines ?? 6) }}>
       <Show when={parent()}>
-        {(post) => (
-          <div class="x-context" {...openOnX(post().url)}>
-            <span>{t().replyingTo}</span> <a href={post().url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>{post().author}</a>
-            <Show when={post().text}>
-              {(text) => <span class="x-context-text">{text()}</span>}
-            </Show>
-          </div>
-        )}
+        {(post) => <XStep post={post()} href={post().url} line context text={post().text} />}
       </Show>
       <XStep
         post={author()}

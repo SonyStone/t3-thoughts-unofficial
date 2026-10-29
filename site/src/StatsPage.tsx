@@ -82,7 +82,11 @@ function Hours(props: { hours: number[]; peak: number }) {
       <div class="hours" role="img" aria-label={t().stats.hourAria(props.peak)}>
         <For each={props.hours}>
           {(count, hour) => (
-            <div class={{ hour: true, peak: hour() === props.peak }} title={`${hour()}:00–${hour() + 1}:00 · ${count}`}>
+            <div
+              class={{ hour: true, peak: hour() === props.peak }}
+              style={{ "--peak-height": `${(count / max()) * 100}%` }}
+              title={`${hour()}:00–${hour() + 1}:00 · ${count}`}
+            >
               <Show when={hour() === props.peak}>
                 <span class="hour-value">{t().stats.posts(count)}</span>
               </Show>
