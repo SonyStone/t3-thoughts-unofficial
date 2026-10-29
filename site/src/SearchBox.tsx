@@ -274,89 +274,92 @@ export default function SearchBox(props: { stuck: boolean }) {
         class={{ "search-field": true, over: over() === "field" }}
         onClick={(event) => {
           // a click on the empty part of the box puts the caret after the last chip
-          if (event.target === event.currentTarget) setCaret(undefined);
+          if ((event.target as HTMLElement).matches(".search-field, .chips")) setCaret(undefined);
           input?.focus();
         }}
         {...target("field", { before: clauses().length })}
       >
         {/* flex order keeps the one text field where the caret is, between chips, without remounting it */}
         <Icon name="search" class="search-icon" />
-        <For each={clauses()}>
-          {(clause: Clause, index) => (
-            <>
-              <Show
-                when={!("raw" in clause) && clause}
-                fallback={
-                  <button
-                    {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }))}
-                    class={{ chip: true, raw: true, carried: isCarried(index(), -1) }}
-                    style={{ order: 2 * index() + 2 }}
-                  >
-                    {(clause as { raw: string }).raw}
-                  </button>
-                }
-              >
-                {(group) => (
-                  <span
-                    class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
-                    style={{ order: 2 * index() + 2 }}
-                  >
-                    <For each={group().terms}>
-                      {(term, termIndex) => (
-                        <>
-                          <Show when={termIndex() > 0 && !isCarried(index(), termIndex())}>
-                            <span class="chip-op">{t().or}</span>
-                          </Show>
-                          <span class="term">
-                            {/* a tab over each chip: dropped there, the tag goes with it by "and";
-                                inside an "or" group that makes (this and the tag) */}
-                            <Show when={dragged() && !isCarried(index(), termIndex())}>
-                              <span
-                                class={{ "and-tab": true, over: over() === `and-${index()}-${termIndex()}` }}
-                                {...target(
-                                  `and-${index()}-${termIndex()}`,
-                                  group().terms.length > 1 ? { andWith: { clause: index(), term: termIndex() } } : { before: index() + 1 },
-                                )}
-                              >
-                                {t().and}
-                              </span>
+        {/* chips and the text field wrap in their own box, so the drop zones keep the right side */}
+        <span class="chips">
+          <For each={clauses()}>
+            {(clause: Clause, index) => (
+              <>
+                <Show
+                  when={!("raw" in clause) && clause}
+                  fallback={
+                    <button
+                      {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }))}
+                      class={{ chip: true, raw: true, carried: isCarried(index(), -1) }}
+                      style={{ order: 2 * index() + 2 }}
+                    >
+                      {(clause as { raw: string }).raw}
+                    </button>
+                  }
+                >
+                  {(group) => (
+                    <span
+                      class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
+                      style={{ order: 2 * index() + 2 }}
+                    >
+                      <For each={group().terms}>
+                        {(term, termIndex) => (
+                          <>
+                            <Show when={termIndex() > 0 && !isCarried(index(), termIndex())}>
+                              <span class="chip-op">{t().or}</span>
                             </Show>
-                            <TermChip term={term} clause={index()} index={termIndex()} />
-                          </span>
-                        </>
-                      )}
-                    </For>
-                    {/* a tab hanging under the chip: dropped there, the tag joins it with "or" */}
-                    <Show when={canJoin(index())}>
-                      <span class={{ "or-tab": true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
-                        {t().drop.or}
-                      </span>
-                    </Show>
-                  </span>
-                )}
-              </Show>
-            </>
-          )}
-        </For>
-        <input
-          style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `max(2px, ${draft().length + 0.3}ch)` : undefined }}
-          class={{ inside: caretAt() < clauses().length }}
-          ref={(el) => (input = el)}
-          type="text"
-          placeholder={clauses().length ? "" : t().searchPlaceholder}
-          value={draft()}
-          autocomplete="off"
-          spellcheck={false}
-          aria-label={t().searchPlaceholder}
-          onInput={(event) => onInput(event.currentTarget.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => {
-            setCaret(undefined);
-            setFocused(false);
-            commit(draft());
-          }}
-          onKeyDown={onKeyDown}
-        />
+                            <span class="term">
+                              {/* a tab over each chip: dropped there, the tag goes with it by "and";
+                                  inside an "or" group that makes (this and the tag) */}
+                              <Show when={dragged() && !isCarried(index(), termIndex())}>
+                                <span
+                                  class={{ "and-tab": true, over: over() === `and-${index()}-${termIndex()}` }}
+                                  {...target(
+                                    `and-${index()}-${termIndex()}`,
+                                    group().terms.length > 1 ? { andWith: { clause: index(), term: termIndex() } } : { before: index() + 1 },
+                                  )}
+                                >
+                                  {t().and}
+                                </span>
+                              </Show>
+                              <TermChip term={term} clause={index()} index={termIndex()} />
+                            </span>
+                          </>
+                        )}
+                      </For>
+                      {/* a tab hanging under the chip: dropped there, the tag joins it with "or" */}
+                      <Show when={canJoin(index())}>
+                        <span class={{ "or-tab": true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
+                          {t().drop.or}
+                        </span>
+                      </Show>
+                    </span>
+                  )}
+                </Show>
+              </>
+            )}
+          </For>
+          <input
+            style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `max(2px, ${draft().length + 0.3}ch)` : undefined }}
+            class={{ inside: caretAt() < clauses().length }}
+            ref={(el) => (input = el)}
+            type="text"
+            placeholder={clauses().length ? "" : t().searchPlaceholder}
+            value={draft()}
+            autocomplete="off"
+            spellcheck={false}
+            aria-label={t().searchPlaceholder}
+            onInput={(event) => onInput(event.currentTarget.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => {
+              setCaret(undefined);
+              setFocused(false);
+              commit(draft());
+            }}
+            onKeyDown={onKeyDown}
+          />
+        </span>
         {/* while something is dragged, the free part of the box becomes big zones, one per action */}
         <Show when={dragged()}>
           <span class="drop-board">

@@ -376,11 +376,12 @@ main.on-hero {
 
 .search-field {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   --pad-y: 10px;
   --pad-r: 12px;
+  /* how far the "and" and "or" tabs reach over and under a chip while dragging */
+  --tab: calc(var(--pad-y) + 40px);
   min-height: 70px;
   padding: var(--pad-y) var(--pad-r) var(--pad-y) 22px;
   border: 1px solid var(--line-strong);
@@ -429,6 +430,26 @@ main.on-hero {
 
 .search-icon {
   order: -1;
+}
+
+.chips {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* while dragging the chips give way to the zones and wrap, with room between rows for the
+   "or" tabs of one row and the "and" tabs of the next */
+.search.dragging .chips,
+.search.dragging .chip-group {
+  row-gap: calc(2 * var(--tab) + 4px);
+}
+
+.search.dragging .chips {
+  flex: 0 1 auto;
 }
 
 .drop-board,
@@ -517,6 +538,11 @@ main.on-hero {
   cursor: grabbing;
 }
 
+/* the tag or chip being dragged stays in place, dimmed, while its copy follows the pointer */
+[data-drag-source] {
+  opacity: 0.35;
+}
+
 /* a finger on a chip in the search drags it instead of scrolling the page */
 .search .chip {
   touch-action: none;
@@ -556,6 +582,7 @@ main.on-hero {
 
 .chip-group {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 3px;
@@ -585,7 +612,7 @@ main.on-hero {
 /* the free part of the search box while dragging: zones side by side, the box's full height */
 .drop-board {
   display: flex;
-  flex: 1 1 420px;
+  flex: 1 0 360px;
   align-self: stretch;
   margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) 8px;
 }
@@ -648,8 +675,7 @@ main.on-hero {
   display: grid;
   place-items: end center;
   width: 100%;
-  min-width: 64px;
-  height: calc(var(--pad-y) + 40px);
+  height: var(--tab);
   padding-bottom: 10px;
   border: 1px dashed var(--muted);
   border-top: 0;
@@ -672,6 +698,16 @@ main.on-hero {
   display: inline-flex;
 }
 
+/* a short chip widens while dragging, so its tabs are big enough to hit and stay over it */
+.search.dragging .term {
+  min-width: 64px;
+}
+
+.term > .chip {
+  flex: 1;
+  justify-content: center;
+}
+
 .and-tab {
   position: absolute;
   bottom: calc(100% - 1px);
@@ -680,8 +716,7 @@ main.on-hero {
   display: grid;
   place-items: start center;
   width: 100%;
-  min-width: 56px;
-  height: calc(var(--pad-y) + 40px);
+  height: var(--tab);
   padding-top: 10px;
   border: 1px dashed var(--muted);
   border-bottom: 0;
@@ -2605,6 +2640,14 @@ footer {
      tabs hanging under the chips stay clear of it */
   .search.dragging .search-icon {
     display: none;
+  }
+
+  .search-field {
+    flex-wrap: wrap;
+  }
+
+  .search.dragging .chips {
+    flex: 1 1 100%;
   }
 
   .drop-board {

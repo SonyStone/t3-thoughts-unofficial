@@ -90,6 +90,7 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
         ghost.classList.add("drag-ghost");
         ghost.style.width = `${box.width}px`;
         document.body.append(ghost);
+        source.setAttribute("data-drag-source", "");
         // from here the proxy holds the pointer, so the source can leave the page
         const next = getProxy();
         try {
@@ -126,6 +127,7 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
         }
         const what = dragged();
         ghost?.remove();
+        source.removeAttribute("data-drag-source");
         try {
           // the handler still sees the drag as it was, then it ends, whatever the handler does
           if (what && drop && e instanceof PointerEvent) handler?.(what, keyAt(e.clientX, e.clientY), e.clientX, e.clientY);

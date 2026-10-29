@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import { vocabulary } from "virtual:content";
 import type { Described } from "./types";
 import { lang, t } from "./i18n";
-import { applyTag, excludesTag, mentions } from "./clauses";
+import { applyTag, excludesTag, uses } from "./clauses";
 import { feedHref, route } from "./route";
 import { draggable } from "./drag";
 import { longPress, openTagMenu } from "./TagMenu";
@@ -49,9 +49,10 @@ export function Tag(props: { tag: string; count?: number; implied?: boolean }) {
   const drag = draggable(() => ({ kind: "tag", tag: props.tag }), { touch: false });
   return (
     <a
-      class={{ tag: true, active: mentions(route().q, props.tag), excluded: excludesTag(route().q, props.tag), implied: !!props.implied }}
+      // in the search either way, asked for or excluded
+      class={{ tag: true, active: uses(route().q, props.tag), excluded: excludesTag(route().q, props.tag), implied: !!props.implied }}
       data-ns={namespaceKey(props.tag)}
-      href={feedHref(applyTag(route().q, props.tag, mentions(route().q, props.tag) || excludesTag(route().q, props.tag) ? "remove" : "and"))}
+      href={feedHref(applyTag(route().q, props.tag, uses(route().q, props.tag) ? "remove" : "and"))}
       title={props.implied ? t().impliedTag : describe(vocabulary.tags[props.tag])}
       draggable={drag.draggable}
       onDragStart={drag.onDragStart}

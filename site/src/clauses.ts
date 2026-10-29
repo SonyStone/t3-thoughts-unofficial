@@ -212,3 +212,9 @@ export function mentions(query: string, tag: string): boolean {
   const found = (t: Term): boolean => (!t.neg && same(t.raw, tag)) || (t.all ?? []).some(found);
   return toClauses(query).some((c) => !("raw" in c) && c.terms.some(found));
 }
+
+/** Whether the query has this tag anywhere, asked for or excluded. */
+export function uses(query: string, tag: string): boolean {
+  const found = (t: Term): boolean => same(t.raw, tag) || (t.all ?? []).some(found);
+  return toClauses(query).some((c) => !("raw" in c) && c.terms.some(found));
+}

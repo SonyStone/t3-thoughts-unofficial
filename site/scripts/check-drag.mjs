@@ -71,3 +71,41 @@ await browser.close();
   console.log("partner leaves the group".padEnd(28), "->", JSON.stringify(q2), await p2.locator(".search .chip").allTextContents(), "raw:", await p2.locator(".search .chip.raw").count());
   await browser2.close();
 }
+
+// many chips: they wrap onto rows with room for the tabs between them, the zones keep the right side
+{
+  const browser3 = await chromium.launch();
+  const p3 = await browser3.newPage({ viewport: { width: 1340, height: 900 } });
+  const many = "(model:claude || company:anthropic) prompts-vs-features harness open-source -ui business agents company:openai sort:views weight:>=1";
+  const read = () => p3.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
+  async function dragTag(name, text, to) {
+    await p3.goto("about:blank");
+    await p3.goto("http://localhost:5173/#/?q=" + encodeURIComponent(many));
+    await p3.waitForTimeout(300);
+    const t = await p3.locator(".hero-cloud .tag", { hasText: text }).first().boundingBox();
+    await p3.mouse.move(t.x + 10, t.y + 8);
+    await p3.mouse.down();
+    await p3.mouse.move(t.x + 30, t.y - 20, { steps: 3 });
+    await p3.waitForTimeout(80);
+    const dimmed = await p3.locator("[data-drag-source]").count();
+    // nothing on the board may hide another place: the middle of each place must be that place
+    const hidden = await p3.evaluate(() =>
+      [...document.querySelectorAll(".search [data-drop]")]
+        .filter((el) => el.dataset.drop !== "field")
+        .filter((el) => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest("[data-drop]") !== el; })
+        .map((el) => el.dataset.drop),
+    );
+    const b = await to();
+    await p3.mouse.move(b.x, b.y, { steps: 5 });
+    await p3.mouse.up();
+    await p3.waitForTimeout(250);
+    console.log(name.padEnd(28), "->", JSON.stringify(await read()), "dimmed:", dimmed, "hidden:", hidden, "left dimmed:", await p3.locator("[data-drag-source]").count());
+  }
+  const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone", { hasText: "Without" })));
+  await dragTag("many: tag -> or under ui", "workflow", () => mid(p3.locator(".or-tab").nth(4)));
+  await dragTag("many: tag -> and over weight", "workflow", () => mid(p3.locator(".and-tab").last()));
+  // an excluded tag counts as used in the cloud
+  console.log("excluded ui marked used".padEnd(28), "->", await p3.locator(".hero-cloud .tag.active.excluded", { hasText: "ui" }).count());
+  await browser3.close();
+}
