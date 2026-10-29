@@ -295,16 +295,22 @@ export default function SearchBox(props: { stuck: boolean }) {
                           <Show when={termIndex() > 0 && !isCarried(index(), termIndex())}>
                             <span class="chip-op">{t().or}</span>
                           </Show>
-                          <TermChip term={term} clause={index()} index={termIndex()} />
-                          {/* inside an "or" group, a slot beside each alternative: dropped there, the tag joins it with "and" */}
-                          <Show when={dragged() && group().terms.length > 1 && !isCarried(index(), termIndex())}>
-                            <span
-                              class={{ "and-slot": true, over: over() === `and-${index()}-${termIndex()}` }}
-                              {...target(`and-${index()}-${termIndex()}`, { andWith: { clause: index(), term: termIndex() } })}
-                            >
-                              {t().and}
-                            </span>
-                          </Show>
+                          <span class="term">
+                            {/* a tab over each chip: dropped there, the tag goes with it by "and";
+                                inside an "or" group that makes (this and the tag) */}
+                            <Show when={dragged() && !isCarried(index(), termIndex())}>
+                              <span
+                                class={{ "and-tab": true, over: over() === `and-${index()}-${termIndex()}` }}
+                                {...target(
+                                  `and-${index()}-${termIndex()}`,
+                                  group().terms.length > 1 ? { andWith: { clause: index(), term: termIndex() } } : { before: index() + 1 },
+                                )}
+                              >
+                                {t().and}
+                              </span>
+                            </Show>
+                            <TermChip term={term} clause={index()} index={termIndex()} />
+                          </span>
                         </>
                       )}
                     </For>

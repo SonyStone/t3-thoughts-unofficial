@@ -28,10 +28,27 @@ const center = async (loc) => { const b = await loc.boundingBox(); return { x: b
 for (const src of ["open-source", "business", "ui"]) {
   await tryDrag(`${src} -> or tab 0`, src, () => center(page.locator(".or-tab").first()));
   await tryDrag(`${src} -> or tab last`, src, () => center(page.locator(".or-tab").last()));
+  await tryDrag(`${src} -> and tab 0`, src, () => center(page.locator(".and-tab").first()));
   await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone", { hasText: "Without" })));
   await tryDrag(`${src} -> only`, src, () => center(page.locator(".drop-zone", { hasText: "Only" })));
   await tryDrag(`${src} -> back on itself`, src, async () => ({ x: 300, y: 600 }));
   await tryDrag(`${src} -> out`, src, async () => ({ x: 700, y: 880 }));
 }
+// inside an "or" group, the "and" tab over an alternative makes (it and the tag)
+await page.goto("about:blank");
+await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent("model:claude || harness"));
+await page.waitForTimeout(300);
+const tag = await page.locator(".hero-cloud .tag", { hasText: "agents" }).first().boundingBox();
+await page.mouse.move(tag.x + 10, tag.y + 8);
+await page.mouse.down();
+await page.mouse.move(tag.x + 30, tag.y - 20, { steps: 3 });
+await page.waitForTimeout(80);
+const tab = await page.locator(".and-tab").nth(1).boundingBox();
+await page.mouse.move(tab.x + tab.width / 2, tab.y + tab.height / 2, { steps: 5 });
+await page.waitForTimeout(100);
+await page.screenshot({ path: "/tmp/and-tabs.png", clip: { x: 0, y: 470, width: 1000, height: 260 } });
+await page.mouse.up();
+await page.waitForTimeout(250);
+console.log("tag -> and tab over harness".padEnd(28), "->", JSON.stringify(await q()));
 console.log("errors:", errors);
 await browser.close();

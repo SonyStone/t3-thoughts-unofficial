@@ -666,6 +666,48 @@ main.on-hero {
   border-bottom-right-radius: 0;
 }
 
+/* the mirror of the "or" tab: over each chip while dragging, drop here for "and" */
+.term {
+  position: relative;
+  display: inline-flex;
+}
+
+.and-tab {
+  position: absolute;
+  bottom: calc(100% - 1px);
+  left: 0;
+  z-index: 6;
+  display: grid;
+  place-items: start center;
+  width: 100%;
+  min-width: 56px;
+  height: calc(var(--pad-y) + 40px);
+  padding-top: 10px;
+  border: 1px dashed var(--muted);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: rgba(23, 20, 28, 0.96);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.term:has(.and-tab) .chip {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.and-tab.over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  color: var(--text);
+}
+
+.term:has(.and-tab.over) .chip {
+  border-color: var(--accent);
+}
+
 .or-tab.over {
   border-style: solid;
   border-color: var(--accent);
@@ -716,26 +758,6 @@ main.on-hero {
 
 .and-group .part .tag-ns {
   margin-right: -5px;
-}
-
-/* beside each alternative of an "or" group while dragging: drop here for "and" */
-.and-slot {
-  display: grid;
-  place-items: center;
-  align-self: stretch;
-  min-width: 56px;
-  border: 1px dashed var(--muted);
-  border-radius: 8px;
-  color: var(--text-2);
-  font-family: var(--mono);
-  font-size: 0.78rem;
-}
-
-.and-slot.over {
-  border-style: solid;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
-  color: var(--text);
 }
 
 /* the chip being carried leaves the box until it is dropped (the drag holds on through a proxy) */
@@ -2589,7 +2611,7 @@ footer {
     order: -1;
     flex-basis: 100%;
     min-height: 48px;
-    margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 4px -14px;
+    margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 44px -14px;
     border-bottom: 1px dashed var(--line-strong);
   }
 
