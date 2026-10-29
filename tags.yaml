@@ -1,0 +1,105 @@
+# Словарь тегов T3 Thoughts.
+# Читают двое: Opus ставит теги по нему (playbooks/posts.md, playbooks/video.md),
+# сайт берёт отсюда описания, синонимы и следствия (site/content-plugin.ts).
+#
+# Описания: { en: ..., ru: ... }, английский основной. Новому тегу хватит en, ru допишется потом.
+#
+# Тег — строка в нижнем регистре через дефис, с пространством имён или без:
+#   product:t3-code, model:opus-5.5, mood:salty, agents
+# Без пространства имён — тема.
+
+namespaces:
+  product: { en: "a product or service (his own or someone else's) — t3-code, t3-chat, codex, cursor", ru: "продукт или сервис (свой или чужой) — t3-code, t3-chat, codex, cursor" }
+  model: { en: "a specific model or model family — opus-5.5, gpt-6.1, claude, grok", ru: "конкретная модель или семейство — opus-5.5, gpt-6.1, claude, grok" }
+  company: { en: "a company — anthropic, openai, google, vercel", ru: "компания — anthropic, openai, google, vercel" }
+  person: { en: "a person the post is about, by X handle without @ — jullerino, sama", ru: "человек, о котором идёт речь, по хэндлу X без @ — jullerino, sama" }
+  tech: { en: "a technology, language, protocol or dev tool — tmux, mcp, react, ios", ru: "технология, язык, протокол, инструмент разработки — tmux, mcp, react, ios" }
+  mood: { en: "Theo's own tone in the post, exactly one per entry", ru: "тон самого Theo в посте, ровно один на запись" }
+  format: { en: "what kind of entry this is, one or two per entry", ru: "что это за запись по сути, один-два на запись" }
+
+# Разрешённые значения для закрытых пространств имён.
+mood: [hype, salty, joking, tired, serious, curious, proud, annoyed]
+format: [how-to, take, news, announcement, answer, prediction, opinion-change, behind-the-scenes]
+
+# Известные теги и что они значат. Новый тег можно добавить, если ни один не подходит.
+tags:
+  product:t3-code: { en: "T3 Code, Theo's coding agent orchestrator", ru: "T3 Code, кодинг-агент-оркестратор Theo" }
+  product:t3-chat: { en: "T3 Chat, a chat app across many models", ru: "T3 Chat, чат с разными моделями" }
+  product:codex: { en: "Codex by OpenAI", ru: "Codex от OpenAI" }
+  product:claude-code: { en: "Claude Code by Anthropic", ru: "Claude Code от Anthropic" }
+  product:antigravity: { en: "Antigravity by Google", ru: "Antigravity от Google" }
+  product:boat: { en: "boat.dev, cloud Linux VMs (sandboxes) for agents", ru: "boat.dev, облачные Linux-ВМ (песочницы) для агентов" }
+  model:opus-5.5: { en: "Claude Opus 5.5", ru: "Claude Opus 5.5" }
+  model:opus: { en: "the Claude Opus family", ru: "семейство Claude Opus" }
+  model:claude: { en: "Claude models in general", ru: "модели Claude вообще" }
+  model:gpt-6.1: { en: "OpenAI's GPT-6.1 line (Terra, Sol)", ru: "линейка GPT-6.1 от OpenAI (Terra, Sol)" }
+  company:anthropic: { en: "Anthropic", ru: "Anthropic" }
+  company:openai: { en: "OpenAI", ru: "OpenAI" }
+  company:google: { en: "Google", ru: "Google" }
+  company:github: { en: "GitHub", ru: "GitHub" }
+  company:apple: { en: "Apple", ru: "Apple" }
+  tech:mcp: { en: "Model Context Protocol", ru: "Model Context Protocol" }
+  tech:acp: { en: "Agent Client Protocol", ru: "Agent Client Protocol" }
+  tech:tmux: { en: "tmux", ru: "tmux" }
+  tech:ios: { en: "iOS and the mobile app", ru: "iOS и мобильное приложение" }
+  tech:ci: { en: "CI, checks on pull requests", ru: "CI, проверки в пулл-реквестах" }
+  tech:terminal: { en: "terminal and TUI versus GUI for working with agents", ru: "терминал и TUI против GUI для работы с агентами" }
+  agents: { en: "agents that write code on their own", ru: "агенты, которые сами пишут код" }
+  subagents: { en: "an agent launching other agents", ru: "агент запускает других агентов" }
+  orchestration: { en: "running many agents and threads", ru: "управление многими агентами и тредами" }
+  harness: { en: "what wraps a model — tools, prompts, the agent loop", ru: "обвязка вокруг модели — инструменты, промпты, цикл агента" }
+  workflow: { en: "how he works himself", ru: "как он сам работает, рабочий процесс" }
+  skills: { en: "skills and instructions for agents", ru: "skills и инструкции для агентов" }
+  fleet: { en: "T3 Code running across several machines", ru: "работа T3 Code на нескольких машинах" }
+  remotes: { en: "remote machines and environments", ru: "удалённые машины и окружения" }
+  bot: { en: "his bot that hands tasks to agents", ru: "его бот, который ставит задачи агентам" }
+  pull-requests: { en: "pull requests and their review", ru: "пулл-реквесты и их ревью" }
+  review: { en: "code review by a model or a person", ru: "ревью кода моделью или человеком" }
+  models: { en: "comparing and choosing models", ru: "сравнение и выбор моделей" }
+  open-weights: { en: "open-weight models", ru: "открытые модели" }
+  benchmarks: { en: "model benchmarks and rankings", ru: "бенчмарки и рейтинги моделей" }
+  open-source: { en: "open source, licenses", ru: "открытый код, лицензии" }
+  business: { en: "money, business, cost", ru: "деньги, бизнес, стоимость" }
+  security: { en: "security", ru: "безопасность" }
+  secrets: { en: "handing secrets to agents", ru: "передача секретов агентам" }
+  sandbox: { en: "sandboxes for agents", ru: "песочницы для агентов" }
+  ui: { en: "interface and design", ru: "интерфейс и дизайн" }
+  roadmap: { en: "plans and what's next", ru: "планы и что будет дальше" }
+  quality: { en: "code and product quality", ru: "качество кода и продукта" }
+  side-chats: { en: "side chats, branching off a thread in T3 Code", ru: "боковые чаты, ответвление от треда в T3 Code" }
+  prompts-vs-features: { en: "no feature needed, just tell the agent", ru: "отдельная фича не нужна, хватит сказать агенту" }
+  competition: { en: "comparison with competitors and other ADEs", ru: "сравнение с конкурентами и другими ADE" }
+
+# Старое имя → каноническое. Сайт заменяет при чтении, Opus сразу пишет каноническое.
+aliases:
+  t3-code: product:t3-code
+  t3-chat: product:t3-chat
+  codex: product:codex
+  antigravity: product:antigravity
+  opus: model:opus
+  claude: model:claude
+  openai: company:openai
+  github: company:github
+  app-store: company:apple
+  mcp: tech:mcp
+  acp: tech:acp
+  tmux: tech:tmux
+  ios: tech:ios
+  ci: tech:ci
+  boat: product:boat
+  terminal: tech:terminal
+
+# Тег → что он добавляет сам. Применяется по цепочке: opus-5.5 → opus → claude → anthropic.
+implies:
+  model:opus-5.5: [model:opus]
+  model:opus: [model:claude]
+  model:claude: [company:anthropic]
+  product:claude-code: [company:anthropic]
+  product:codex: [company:openai]
+  product:antigravity: [company:google]
+  model:gpt-6.1: [company:openai]
+  subagents: [agents]
+  orchestration: [agents]
+
+# Теги, которые дублируют поля записи (kind), сайт их отбрасывает.
+drop: [repost, video]

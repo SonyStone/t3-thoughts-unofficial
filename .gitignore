@@ -1,0 +1,7 @@
+node_modules/
+dist/
+assets/avatar-source/*.mp4
+assets/avatar-source/*.webm
+assets/avatar-source/*.mkv
+.DS_Store
+assets/header/drafts/
