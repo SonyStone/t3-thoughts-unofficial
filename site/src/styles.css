@@ -262,8 +262,9 @@ a {
 
 /* Header: the video in a frame of fixed proportions. Title position and size are in the
    frame's own units (cqw), so title and Theo keep their places relative to each other.
-   The whole 2:1 video shows; the page starts at 2.4:1 (the negative margin, a sixth of the
-   height), so the search sits on the video and its lower part runs on under the tag cloud. */
+   The frame has the video's own 16:9, so all of it shows. The page starts higher, at 5/12
+   of the width (the negative margin takes back 9/16 − 5/12 = 7/48): the search sits on the
+   video and its lower part runs on under the tag cloud. */
 
 /* its own block, so the frame's negative margin and the page's (main.on-hero) add up
    instead of collapsing into the larger one */
@@ -274,8 +275,8 @@ a {
 .hero-frame {
   position: relative;
   width: min(100%, 1920px);
-  margin: 0 auto calc(min(100%, 1920px) / -12);
-  aspect-ratio: 2;
+  margin: 0 auto calc(min(100%, 1920px) * -7 / 48);
+  aspect-ratio: 16 / 9;
   overflow: hidden;
   container-type: inline-size;
   background: var(--bg);
@@ -291,21 +292,26 @@ a {
   filter: saturate(0.9);
 }
 
-/* darker at the top for the menu; from the middle of the search (where the page starts,
-   5/6 of the height) the video fades into the page by its lower edge */
+/* darker at the top for the menu; from a little above the search (its middle is where
+   the page starts, 5/12 of the width down) the video fades into the page by its lower edge */
 .hero-frame::after {
   content: "";
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, transparent 83.3%, rgba(13, 11, 16, 0.6) 92%, var(--bg) 100%),
-    linear-gradient(180deg, rgba(13, 11, 16, 0.55) 0%, transparent 17%);
+    linear-gradient(
+      180deg,
+      transparent calc(41.667cqw - min(70px, 8cqw)),
+      rgba(13, 11, 16, 0.6) calc(41.667cqw + 40px),
+      var(--bg) 100%
+    ),
+    linear-gradient(180deg, rgba(13, 11, 16, 0.55) 0%, transparent 15%);
 }
 
 .hero-text {
   position: absolute;
   left: 6%;
-  /* 66% of the 2.4:1 page part of the frame */
+  /* where it stood over the page part of the frame: 66% of 5/12 of the width */
   top: 27.5cqw;
   z-index: 1;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
