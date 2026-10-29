@@ -500,8 +500,21 @@ main.on-hero {
   background: var(--ns, var(--line-strong));
 }
 
-.chip[draggable="true"] {
+.search .chip,
+.tag {
   cursor: grab;
+}
+
+/* the copy of a tag or chip that follows the pointer while it is dragged */
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  cursor: grabbing;
 }
 
 /* a finger on a chip in the search drags it instead of scrolling the page */
@@ -509,12 +522,7 @@ main.on-hero {
   touch-action: none;
 }
 
-.chip.lifted {
-  position: relative;
-  z-index: 10;
-  pointer-events: none;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
-}
+
 
 .chip:hover {
   border-color: var(--muted);
@@ -730,12 +738,9 @@ main.on-hero {
   color: var(--text);
 }
 
-/* the chip being carried leaves the box until it is dropped. Not display: none: Chrome
-   cancels a drag whose source element stops being rendered. */
+/* the chip being carried leaves the box until it is dropped (the drag holds on through a proxy) */
 .chip.carried {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+  display: none;
 }
 
 .search-drop {
@@ -2574,20 +2579,35 @@ footer {
     gap: 6px;
   }
 
-  /* phone: the board takes a row of its own under the chips, still edge to edge */
+  /* phone: the board takes a row of its own above the chips, edge to edge, so the "or"
+     tabs hanging under the chips stay clear of it */
+  .search.dragging .search-icon {
+    display: none;
+  }
+
   .drop-board {
+    order: -1;
     flex-basis: 100%;
     min-height: 48px;
-    margin: 4px calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) -14px;
-    border-top: 1px dashed var(--line-strong);
+    margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 4px -14px;
+    border-bottom: 1px dashed var(--line-strong);
   }
 
   .drop-board > :first-child {
     border-left: 0;
   }
 
+  .drop-board > :first-child,
   .drop-board > :last-child {
-    border-radius: 0 0 13px 0;
+    border-radius: 0;
+  }
+
+  .drop-board > :first-child {
+    border-top-left-radius: 13px;
+  }
+
+  .drop-board > :last-child {
+    border-top-right-radius: 13px;
   }
 
   .drop-zone {

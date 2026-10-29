@@ -1,37 +1,143 @@
 import { createSignal } from "solid-js";
 
 /**
- * What is being dragged toward the search box: a chip already in it (with its place) or a
- * tag from anywhere on the page. The box shows its drop places only while this is set.
+ * Dragging tags and chips toward the search box, on pointer events rather than the
+ * browser's drag and drop: one path for mouse and finger, and the source may vanish
+ * mid-drag (a carried chip leaves the box) without ending it. Once the pointer has moved
+ * past a few pixels, its capture goes to a hidden proxy element, as solid-dnd does in
+ * app-game; a copy of the source follows the pointer.
+ *
+ * Drop places mark themselves with `data-drop="<key>"`; whoever owns them registers one
+ * handler with `onDrop` and reads `over()` to light the place under the pointer.
  */
 export type Dragged = { kind: "chip"; clause: number; term: number; raw: string; neg: boolean } | { kind: "tag"; tag: string };
 
 const [dragged, setDragged] = createSignal<Dragged | undefined>();
-export { dragged };
+const [over, setOver] = createSignal<string | undefined>();
+export { dragged, over };
 
-const TYPE = "application/x-t3-tag";
+/** Where it was let go: a drop place key, "outside" for anywhere off the box, or nothing. */
+export type DropHandler = (what: Dragged, key: string | undefined, x: number, y: number) => void;
+let handler: DropHandler | undefined;
+let outsideTest: ((x: number, y: number) => boolean) | undefined;
 
-export function startDrag(event: DragEvent, what: Dragged) {
-  event.stopPropagation();
-  const raw = what.kind === "tag" ? what.tag : what.raw;
-  event.dataTransfer?.setData(TYPE, raw);
-  event.dataTransfer?.setData("text/plain", raw);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-  setDragged(what);
+export function onDrop(drop: DropHandler, isOutside: (x: number, y: number) => boolean) {
+  handler = drop;
+  outsideTest = isOutside;
+  return () => {
+    if (handler === drop) handler = outsideTest = undefined;
+  };
 }
 
-/** A drag that is not the browser's own: a finger moving a chip (see SearchBox). */
-export function beginDrag(what: Dragged) {
-  setDragged(what);
+const THRESHOLD = 6;
+
+let proxy: HTMLDivElement | undefined;
+function getProxy(): HTMLDivElement {
+  if (!proxy) {
+    proxy = document.createElement("div");
+    proxy.setAttribute("aria-hidden", "true");
+    proxy.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none";
+    document.body.append(proxy);
+  }
+  return proxy;
 }
 
-export function endDrag() {
-  setDragged(undefined);
+function keyAt(x: number, y: number): string | undefined {
+  if (outsideTest?.(x, y)) return "outside";
+  return (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
 }
 
-/** Lets a drop happen here; the browser refuses drops unless dragover is cancelled. */
-export function allowDrop(event: DragEvent) {
-  if (!dragged()) return;
-  event.preventDefault();
-  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+// the click that ends a drag is not a click
+let swallowClick = false;
+window.addEventListener(
+  "click",
+  (event) => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  },
+  true,
+);
+
+/**
+ * Handlers for an element that can be dragged. `touch: false` leaves finger touches to the
+ * page (a tag row has to scroll); the mouse always drags.
+ */
+export function draggable(what: () => Dragged, options: { touch?: boolean } = {}) {
+  return {
+    draggable: "false" as const,
+    onDragStart: (event: DragEvent) => event.preventDefault(),
+    onPointerDown: (event: PointerEvent) => {
+      if (event.button !== 0 || (event.pointerType !== "mouse" && options.touch === false)) return;
+      const source = event.currentTarget as HTMLElement;
+      const start = { x: event.clientX, y: event.clientY };
+      const pointer = event.pointerId;
+      let ghost: HTMLElement | undefined;
+      let offset = { x: 0, y: 0 };
+      let target: HTMLElement = source;
+      try {
+        source.setPointerCapture(pointer);
+      } catch {
+        // a pointer the browser no longer tracks; window listeners below still see it
+      }
+
+      const begin = () => {
+        const box = source.getBoundingClientRect();
+        offset = { x: start.x - box.left, y: start.y - box.top };
+        ghost = source.cloneNode(true) as HTMLElement;
+        ghost.classList.add("drag-ghost");
+        ghost.style.width = `${box.width}px`;
+        document.body.append(ghost);
+        // from here the proxy holds the pointer, so the source can leave the page
+        const next = getProxy();
+        try {
+          source.releasePointerCapture(pointer);
+          next.setPointerCapture(pointer);
+        } catch {
+          // capture is a nicety; window listeners carry on without it
+        }
+        target = next;
+        setDragged(what());
+      };
+
+      const move = (e: PointerEvent) => {
+        if (e.pointerId !== pointer) return;
+        if (!dragged() && Math.hypot(e.clientX - start.x, e.clientY - start.y) < THRESHOLD) return;
+        if (!dragged()) begin();
+        e.preventDefault();
+        ghost!.style.transform = `translate(${e.clientX - offset.x}px, ${e.clientY - offset.y}px)`;
+        setOver(keyAt(e.clientX, e.clientY));
+      };
+
+      const finish = (e: PointerEvent | KeyboardEvent, drop: boolean) => {
+        window.removeEventListener("pointermove", move, true);
+        window.removeEventListener("pointerup", up, true);
+        window.removeEventListener("pointercancel", cancel, true);
+        window.removeEventListener("keydown", escape, true);
+        try {
+          target.releasePointerCapture(pointer);
+        } catch {
+          // already released
+        }
+        const what = dragged();
+        ghost?.remove();
+        // the handler still sees the drag as it was, then it ends
+        if (what && drop && "clientX" in e) handler?.(what, keyAt(e.clientX, e.clientY), e.clientX, e.clientY);
+        setOver(undefined);
+        setDragged(undefined);
+        if (!what) return;
+        swallowClick = true;
+        setTimeout(() => (swallowClick = false), 0);
+      };
+      const up = (e: PointerEvent) => e.pointerId === pointer && finish(e, true);
+      const cancel = (e: PointerEvent) => e.pointerId === pointer && finish(e, false);
+      const escape = (e: KeyboardEvent) => e.key === "Escape" && dragged() && finish(e, false);
+
+      window.addEventListener("pointermove", move, true);
+      window.addEventListener("pointerup", up, true);
+      window.addEventListener("pointercancel", cancel, true);
+      window.addEventListener("keydown", escape, true);
+    },
+  };
 }

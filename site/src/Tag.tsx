@@ -4,7 +4,7 @@ import type { Described } from "./types";
 import { lang, t } from "./i18n";
 import { applyTag, excludesTag, mentions } from "./clauses";
 import { feedHref, route } from "./route";
-import { endDrag, startDrag } from "./drag";
+import { draggable } from "./drag";
 import { longPress, openTagMenu } from "./TagMenu";
 import { namespaceOf } from "./search";
 
@@ -46,21 +46,24 @@ export function TagLabel(props: { tag: string }) {
  */
 export function Tag(props: { tag: string; count?: number; implied?: boolean }) {
   const press = longPress(() => props.tag);
+  const drag = draggable(() => ({ kind: "tag", tag: props.tag }), { touch: false });
   return (
     <a
       class={{ tag: true, active: mentions(route().q, props.tag), excluded: excludesTag(route().q, props.tag), implied: !!props.implied }}
       data-ns={namespaceKey(props.tag)}
       href={feedHref(applyTag(route().q, props.tag, mentions(route().q, props.tag) || excludesTag(route().q, props.tag) ? "remove" : "and"))}
       title={props.implied ? t().impliedTag : describe(vocabulary.tags[props.tag])}
-      draggable="true"
+      draggable={drag.draggable}
+      onDragStart={drag.onDragStart}
       onClick={(event) => press.onClick(event) || event.stopPropagation()}
       onContextMenu={(event) => openTagMenu(event, props.tag)}
-      onPointerDown={press.onPointerDown}
+      onPointerDown={(event) => {
+        press.onPointerDown(event);
+        drag.onPointerDown(event);
+      }}
       onPointerMove={press.onPointerMove}
       onPointerUp={press.onPointerUp}
       onPointerCancel={press.onPointerCancel}
-      onDragStart={(event) => startDrag(event, { kind: "tag", tag: props.tag })}
-      onDragEnd={() => endDrag()}
     >
       <TagLabel tag={props.tag} />
       <Show when={props.count !== undefined}>

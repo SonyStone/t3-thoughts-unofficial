@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
-import { allowDrop, beginDrag, dragged, endDrag, startDrag } from "./drag";
+import { draggable, dragged, onDrop, over, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { currentQuery, route, setQuery } from "./route";
@@ -18,9 +18,10 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
 /**
  * The search box: the query as chips (AND between chips, OR inside a group), then a text
  * field with tag autocomplete. A space or Enter turns the text into a chip, Backspace on an
- * empty field takes the last chip back, a chip click opens the tag menu. Chips can be
- * dragged: onto another chip to join it with OR, between chips to stand alone, onto
- * "without" or "remove". Tags from the page can be dragged in as well.
+ * empty field takes the chip before the caret back, a chip click opens the tag menu. Chips
+ * and tags from the page can be dragged in (drag.ts): onto the zones of the box, the "or"
+ * tab under a chip, the "and" beside an alternative in a group; a chip let go off the box
+ * leaves the query.
  * `/` and ⌘K focus it from anywhere. Once it sticks to the top, focusing it shows the
  * tag cloud in a dropdown.
  */
@@ -34,7 +35,6 @@ export default function SearchBox(props: { stuck: boolean }) {
   const [draft, setDraft] = createSignal("");
   const [focused, setFocused] = createSignal(false);
   const [active, setActive] = createSignal(0);
-  const [over, setOver] = createSignal<string | undefined>();
 
   const clauses = createMemo(() => toClauses(route().q));
   // tags for one word; the words themselves as a text search, last, for anything that is not all tags
@@ -147,25 +147,15 @@ export default function SearchBox(props: { stuck: boolean }) {
     setActive(0);
   };
 
-  const drop = (event: DragEvent, to: Target) => {
-    event.preventDefault();
-    event.stopPropagation();
-    place(to);
-  };
-
-  const place = (to: Target) => {
-    const what = dragged();
+  const place = (what: Dragged, to: Target) => {
     const at = carried();
-    setOver(undefined);
-    endDrag();
-    if (!what) return;
     const q = currentQuery();
-    // a tag from the page that is already in the search moves that chip, like a chip would
     if (typeof to === "object" && "andWith" in to) {
       if (what.kind === "tag" && !at) setQuery(andWith(q, to.andWith, { raw: what.tag, neg: false }));
       else if (at) setQuery(andWith(q, to.andWith, (clauses()[at.clause] as { terms: Term[] }).terms[at.term], at));
       return;
     }
+    // a tag from the page that is already in the search moves that chip, like a chip would
     if (what.kind === "tag" && !at) {
       if (to === "remove") return;
       if (to === "only") setQuery(what.tag);
@@ -193,7 +183,7 @@ export default function SearchBox(props: { stuck: boolean }) {
     }
     return undefined;
   });
-  const isCarried = (clause: number, term: number) => lifted() && carried()?.clause === clause && carried()?.term === term;
+  const isCarried = (clause: number, term: number) => carried()?.clause === clause && carried()?.term === term;
   /** Joining a chip with "or" means something only for chips other than the carried one's own group. */
   const canJoin = (index: number) => !!dragged() && carried()?.clause !== index;
 
@@ -206,21 +196,9 @@ export default function SearchBox(props: { stuck: boolean }) {
   const showAdd = () => !carried() || carriedGroupSize() > 1;
   const showOnly = () => clauses().length > (carried() && carriedGroupSize() === 1 ? 1 : 0);
 
-  // the carried chip disappears from the box just after the drag starts (hiding it at once would cancel the drag)
-  const [lifted, setLifted] = createSignal(false);
-
-  // every drop place by its key, so a finger drag can find what is under it (data-drop)
+  // every drop place by its key (data-drop), so the drag can tell what it was let go on
   const targets = new Map<string, Target>();
-  const target = (key: string, to: Target) => (targets.set(key, to), {
-    "data-drop": key,
-    onDragOver: (event: DragEvent) => {
-      allowDrop(event);
-      event.stopPropagation();
-      setOver(key);
-    },
-    onDragLeave: () => over() === key && setOver(undefined),
-    onDrop: (event: DragEvent) => drop(event, to),
-  });
+  const target = (key: string, to: Target) => (targets.set(key, to), { "data-drop": key });
 
   onSettled(() => {
     const focusShortcut = (event: KeyboardEvent) => {
@@ -232,112 +210,29 @@ export default function SearchBox(props: { stuck: boolean }) {
       input?.focus();
     };
     window.addEventListener("keydown", focusShortcut);
-
-    // a chip carried out of the search box and let go there is taken out of the query
-    const overPage = (event: DragEvent) => {
-      if (!carried() || !outside(event.clientX, event.clientY)) return;
-      event.preventDefault();
-      setOver("outside");
-    };
-    const dropOnPage = (event: DragEvent) => {
-      if (!carried() || !outside(event.clientX, event.clientY)) return;
-      event.preventDefault();
-      place("remove");
-    };
-    const lift = () => setTimeout(() => setLifted(true), 0);
-    const settle = () => setLifted(false);
-    window.addEventListener("dragover", overPage);
-    window.addEventListener("drop", dropOnPage);
-    window.addEventListener("dragstart", lift, true);
-    window.addEventListener("dragend", settle, true);
+    // let go off the box, a carried chip leaves the query; on a place, it goes there
+    const stop = onDrop(
+      (what, key) => {
+        if (key === "outside") {
+          if (carried()) place(what, "remove");
+        } else if (key && targets.has(key)) {
+          place(what, targets.get(key)!);
+        }
+      },
+      (x, y) => !!carried() && outside(x, y),
+    );
     return () => {
       window.removeEventListener("keydown", focusShortcut);
-      window.removeEventListener("dragover", overPage);
-      window.removeEventListener("drop", dropOnPage);
-      window.removeEventListener("dragstart", lift, true);
-      window.removeEventListener("dragend", settle, true);
+      stop();
     };
   });
 
-  /**
-   * Phones have no drag and drop for elements, so a finger drags a chip by hand: past 8px
-   * of movement the chip follows the finger, the place under it lights up, and letting go
-   * drops it there. A touch that does not move stays a tap and opens the tag menu.
-   */
-  let moved = false;
-  const fingerDrag = (chip: { term: Term; clause: number; index: number }) => {
-    let start = { x: 0, y: 0 };
-    let el: HTMLElement | undefined;
-    const keyAt = (x: number, y: number) =>
-      (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
-    return {
-      onPointerDown: (event: PointerEvent) => {
-        if (event.pointerType === "mouse") return;
-        el = event.currentTarget as HTMLElement;
-        start = { x: event.clientX, y: event.clientY };
-        moved = false;
-        try {
-          el.setPointerCapture(event.pointerId);
-        } catch {
-          // a pointer the browser no longer tracks; the drag then follows events as they come
-        }
-      },
-      onPointerMove: (event: PointerEvent) => {
-        if (!el || event.pointerType === "mouse") return;
-        const dx = event.clientX - start.x;
-        const dy = event.clientY - start.y;
-        if (!moved && Math.hypot(dx, dy) < 8) return;
-        if (!moved) {
-          moved = true;
-          beginDrag({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg });
-          el.classList.add("lifted");
-        }
-        el.style.transform = `translate(${dx}px, ${dy}px)`;
-        setOver(outside(event.clientX, event.clientY) ? "outside" : keyAt(event.clientX, event.clientY));
-      },
-      onPointerUp: (event: PointerEvent) => {
-        if (!el || event.pointerType === "mouse") return;
-        const key = moved ? keyAt(event.clientX, event.clientY) : undefined;
-        const thrownOut = moved && outside(event.clientX, event.clientY);
-        el.style.transform = "";
-        el.classList.remove("lifted");
-        el = undefined;
-        setOver(undefined);
-        if (thrownOut) place("remove");
-        else if (key && targets.has(key)) place(targets.get(key)!);
-        else endDrag();
-      },
-      onPointerCancel: () => {
-        if (!el) return;
-        el.style.transform = "";
-        el.classList.remove("lifted");
-        el = undefined;
-        moved = false;
-        setOver(undefined);
-        endDrag();
-      },
-    };
-  };
-
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
-      {...fingerDrag(chip)}
+      {...draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg }))}
       class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
-      draggable="true"
-      onDragStart={(event) => startDrag(event, { kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })}
-      onDragEnd={() => {
-        setOver(undefined);
-        endDrag();
-      }}
-      onClick={(event) => {
-        // the click that ends a finger drag is not a tap
-        if (moved) {
-          moved = false;
-          return;
-        }
-        openTagMenu(event, chip.term.raw);
-      }}
+      onClick={(event) => openTagMenu(event, chip.term.raw)}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
       {/* an AND inside an OR: its parts in brackets, carried as one */}
