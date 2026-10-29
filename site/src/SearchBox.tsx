@@ -163,6 +163,14 @@ export default function SearchBox(props: { stuck: boolean }) {
       return;
     }
     if (!at) return;
+    // a raw chip (a query too nested for chips) can only go, stand alone or be negated
+    if (at.term < 0) {
+      const raw = (clauses()[at.clause] as { raw: string }).raw;
+      if (to === "remove") setQuery(toQuery(clauses().filter((_, i) => i !== at.clause)));
+      else if (to === "only") setQuery(raw);
+      else if (to === "negate") setQuery(toQuery(clauses().map((c, i) => (i === at.clause ? { raw: raw.startsWith("-") ? raw.slice(1) : `-${raw}` } : c))));
+      return;
+    }
     const term = (clauses()[at.clause] as { terms: Term[] }).terms[at.term];
     if (to === "only") setQuery(`${term.neg ? "-" : ""}${term.raw}`);
     else setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
@@ -193,7 +201,7 @@ export default function SearchBox(props: { stuck: boolean }) {
     return clause && !("raw" in clause) ? clause.terms.length : 0;
   };
   // only the zones that would change something
-  const showAdd = () => !carried() || carriedGroupSize() > 1;
+  const showAdd = () => !carried() || (carried()!.term >= 0 && carriedGroupSize() > 1);
   const showOnly = () => clauses().length > (carried() && carriedGroupSize() === 1 ? 1 : 0);
 
   // every drop place by its key (data-drop), so the drag can tell what it was let go on
@@ -279,9 +287,13 @@ export default function SearchBox(props: { stuck: boolean }) {
               <Show
                 when={!("raw" in clause) && clause}
                 fallback={
-                  <span class="chip raw" style={{ order: 2 * index() + 2 }}>
+                  <button
+                    {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }))}
+                    class={{ chip: true, raw: true, carried: isCarried(index(), -1) }}
+                    style={{ order: 2 * index() + 2 }}
+                  >
                     {(clause as { raw: string }).raw}
-                  </span>
+                  </button>
                 }
               >
                 {(group) => (

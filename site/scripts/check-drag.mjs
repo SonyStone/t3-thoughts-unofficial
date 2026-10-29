@@ -52,3 +52,22 @@ await page.waitForTimeout(250);
 console.log("tag -> and tab over harness".padEnd(28), "->", JSON.stringify(await q()));
 console.log("errors:", errors);
 await browser.close();
+
+// an "and" group whose "or" partner leaves falls apart into plain chips, all still draggable
+{
+  const browser2 = await chromium.launch();
+  const p2 = await browser2.newPage({ viewport: { width: 1440, height: 900 } });
+  await p2.goto("http://localhost:5173/#/?q=" + encodeURIComponent("model:claude || (harness agents)"));
+  await p2.waitForTimeout(300);
+  const a = await p2.locator(".search .chip", { hasText: "model:claude" }).first().boundingBox();
+  await p2.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await p2.mouse.down();
+  await p2.mouse.move(a.x + a.width / 2 + 15, a.y + 5, { steps: 3 });
+  const add = await p2.locator(".drop-zone", { hasText: "Add" }).boundingBox();
+  await p2.mouse.move(add.x + add.width / 2, add.y + add.height / 2, { steps: 5 });
+  await p2.mouse.up();
+  await p2.waitForTimeout(250);
+  const q2 = await p2.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
+  console.log("partner leaves the group".padEnd(28), "->", JSON.stringify(q2), await p2.locator(".search .chip").allTextContents(), "raw:", await p2.locator(".search .chip.raw").count());
+  await browser2.close();
+}

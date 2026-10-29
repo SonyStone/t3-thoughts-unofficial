@@ -47,10 +47,23 @@ function clause(query: Query): Clause {
   return { raw: show(query) };
 }
 
+/**
+ * AND inside AND and OR inside OR are the same as one level: (a (b c)) is a b c. Flattened
+ * first, so leftovers of editing (an "and" group whose "or" partners all left) become
+ * plain chips again instead of one raw chip.
+ */
+function flat(query: Query): Query {
+  if (query.op === "term") return query;
+  if (query.op === "not") return { op: "not", child: flat(query.child) };
+  const children = query.children.map(flat).flatMap((child) => (child.op === query.op ? child.children : [child]));
+  return children.length === 1 ? children[0] : { op: query.op, children };
+}
+
 export function toClauses(query: string): Clause[] {
   const parsed = parseQuery(query);
   if (!parsed) return [];
-  return parsed.op === "and" ? parsed.children.map(clause) : [clause(parsed)];
+  const tree = flat(parsed);
+  return tree.op === "and" ? tree.children.map(clause) : [clause(tree)];
 }
 
 function termText(t: Term): string {
@@ -59,6 +72,8 @@ function termText(t: Term): string {
 
 /** AND binds tighter than OR (as on derpibooru), so an OR chip among others needs parentheses. */
 export function toQuery(clauses: Clause[]): string {
+  // an "and" group left alone in its clause is just its parts, each a clause of its own
+  clauses = clauses.flatMap((c) => ("raw" in c || c.terms.length !== 1 || !c.terms[0].all || c.terms[0].neg ? [c] : c.terms[0].all.map((t) => ({ terms: [t] }))));
   const several = clauses.length > 1;
   return clauses
     .map((c) => {
