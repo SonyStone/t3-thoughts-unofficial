@@ -411,7 +411,7 @@ main.on-hero {
 }
 
 .search-field input {
-  flex: 1;
+  flex: 1 0 80px;
   min-width: 80px;
   padding: 8px 0;
   border: 0;
@@ -420,6 +420,12 @@ main.on-hero {
   color: var(--text);
   font: inherit;
   font-size: 1.2rem;
+}
+
+/* not typing, the field after the chips takes no room of its own: short queries fit the row */
+.search:not(.focused) .chips > input:not(:placeholder-shown) {
+  flex: 0 0 0;
+  min-width: 0;
 }
 
 /* between chips the text field is only as wide as what is typed */
@@ -432,24 +438,50 @@ main.on-hero {
   order: -1;
 }
 
+/* the chips stay one line: what does not fit scrolls sideways, fading out at that side */
 .chips {
+  --fade-l: 0px;
+  --fade-r: 0px;
   display: flex;
   flex: 1 1 0;
-  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, transparent, #000 var(--fade-l), #000 calc(100% - var(--fade-r)), transparent);
 }
 
-/* while dragging the chips give way to the zones and wrap, with room between rows for the
-   "or" tabs of one row and the "and" tabs of the next */
-.search.dragging .chips,
-.search.dragging .chip-group {
-  row-gap: calc(2 * var(--tab) + 4px);
+.chips::-webkit-scrollbar {
+  display: none;
 }
 
+.chips[data-more-left] {
+  --fade-l: 28px;
+}
+
+.chips[data-more-right] {
+  --fade-r: 28px;
+}
+
+.chips > * {
+  flex: none;
+}
+
+/* while dragging, the chips give way to the zones, and the row reaches over and under the
+   box (padding the margins take back) so the "and" and "or" tabs show; off the chips it lets
+   the pointer through to what is under it */
 .search.dragging .chips {
   flex: 0 1 auto;
+  margin-block: calc(-1 * var(--tab) - 6px);
+  padding-block: calc(var(--tab) + 6px);
+  pointer-events: none;
+}
+
+.search.dragging .chips > * {
+  pointer-events: auto;
 }
 
 .drop-board,
@@ -551,10 +583,6 @@ main.on-hero {
   opacity: 0.35;
 }
 
-/* a finger on a chip in the search drags it instead of scrolling the page */
-.search .chip {
-  touch-action: none;
-}
 
 
 
@@ -590,7 +618,6 @@ main.on-hero {
 
 .chip-group {
   display: inline-flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 3px;
@@ -824,7 +851,6 @@ main.on-hero {
 
 .and-group .part {
   cursor: grab;
-  touch-action: none;
 }
 
 .part.drag-ghost .tag-ns,

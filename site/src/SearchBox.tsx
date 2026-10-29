@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type At, type Clause, type Drop, type Term } from "./clauses";
 import { draggable, dragged, onDrop, over, type Dragged } from "./drag";
 import { t } from "./i18n";
@@ -7,7 +7,7 @@ import { currentQuery, route, setQuery } from "./route";
 import { knowsTerm, suggest, textTerm } from "./search";
 import { namespaceKey, TagLabel } from "./Tag";
 import TagCloud from "./TagCloud";
-import { openTagMenu } from "./TagMenu";
+import { openAt, openTagMenu } from "./TagMenu";
 
 /** Where a dragged tag or chip can land: a place among the chips, or one of the big zones. */
 type Target = Drop | "negate" | "remove" | "only" | { andWith: { clause: number; term: number } };
@@ -28,6 +28,8 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
 export default function SearchBox(props: { stuck: boolean }) {
   let input: HTMLInputElement | undefined;
   let root: HTMLDivElement | undefined;
+  /** The one row of chips; what does not fit scrolls sideways. */
+  let row: HTMLSpanElement | undefined;
   const outside = (x: number, y: number) => {
     const box = root?.getBoundingClientRect();
     return !box || x < box.left || x > box.right || y < box.top || y > box.bottom;
@@ -223,6 +225,66 @@ export default function SearchBox(props: { stuck: boolean }) {
   const targets = new Map<string, Target>();
   const target = (key: string, to: Target) => (targets.set(key, to), { "data-drop": key });
 
+  /** Marks the sides of the row that have more chips past them, for the fades. */
+  const markEdges = () => {
+    if (!row) return;
+    row.toggleAttribute("data-more-left", row.scrollLeft > 1);
+    row.toggleAttribute("data-more-right", row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
+  };
+
+  // the text field is where the caret is and where new chips go: the row keeps it in view
+  createEffect(
+    () => [route().q, caretAt(), draft(), focused()],
+    () => {
+      requestAnimationFrame(() => {
+        if (!row || !input) return;
+        const box = row.getBoundingClientRect();
+        const field = input.getBoundingClientRect();
+        if (field.right > box.right) row.scrollLeft += field.right - box.right + 8;
+        else if (field.left < box.left) row.scrollLeft -= box.left - field.left + 8;
+        markEdges();
+      });
+    },
+    // a page opened on a query shows it from the start
+    { defer: true },
+  );
+
+  // while something is dragged, holding it near an end of the row scrolls the chips past it
+  createEffect(
+    () => !!dragged(),
+    (dragging) => {
+      if (!dragging) return;
+      let x = -1;
+      let y = -1;
+      let frame = 0;
+      const track = (event: PointerEvent) => {
+        x = event.clientX;
+        y = event.clientY;
+      };
+      const step = () => {
+        frame = requestAnimationFrame(step);
+        if (!row) return;
+        // the line of chips itself, not the tabs over and under it (a tag passes those on its way)
+        const box = row.getBoundingClientRect();
+        const pad = parseFloat(getComputedStyle(row).paddingTop);
+        if (y < box.top + pad || y > box.bottom - pad || x < box.left || x > box.right) return;
+        const edge = 48;
+        const speed = x < box.left + edge ? -(box.left + edge - x) : x > box.right - edge ? x - (box.right - edge) : 0;
+        if (speed) {
+          row.scrollLeft += speed / 4;
+          markEdges();
+        }
+      };
+      window.addEventListener("pointermove", track, true);
+      frame = requestAnimationFrame(step);
+      return () => {
+        window.removeEventListener("pointermove", track, true);
+        cancelAnimationFrame(frame);
+        markEdges();
+      };
+    },
+  );
+
   onSettled(() => {
     const focusShortcut = (event: KeyboardEvent) => {
       const typing = (event.target as HTMLElement).closest("input, textarea");
@@ -253,7 +315,12 @@ export default function SearchBox(props: { stuck: boolean }) {
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
       // an "and" group is not carried as a whole: its tags are, one at a time
-      {...(chip.term.all ? {} : draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })))}
+      {...(chip.term.all
+        ? {}
+        : draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg }), {
+            touch: "hold",
+            onHeld: (el, x, y) => openAt(el, chip.term.raw, x, y),
+          }))}
       class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
       onClick={(event) => openTagMenu(event, chip.term.raw)}
@@ -283,7 +350,10 @@ export default function SearchBox(props: { stuck: boolean }) {
 
 
   const PartChip = (chip: { part: Term; clause: number; term: number; index: number }) => {
-    const drag = draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.term, part: chip.index, raw: chip.part.raw, neg: chip.part.neg }));
+    const drag = draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.term, part: chip.index, raw: chip.part.raw, neg: chip.part.neg }), {
+      touch: "hold",
+      onHeld: (el, x, y) => openAt(el, chip.part.raw, x, y),
+    });
     return (
       <span
         draggable={drag.draggable}
@@ -322,8 +392,9 @@ export default function SearchBox(props: { stuck: boolean }) {
       >
         {/* flex order keeps the one text field where the caret is, between chips, without remounting it */}
         <Icon name="search" class="search-icon" />
-        {/* chips and the text field wrap in their own box, so the drop zones keep the right side */}
-        <span class="chips">
+        {/* chips and the text field in one row of their own that scrolls sideways, so the box
+            stays one line and the drop zones keep the right side */}
+        <span class="chips" ref={(el) => (row = el)} onScroll={markEdges}>
           <For each={clauses()}>
             {(clause: Clause, index) => (
               <>
@@ -331,7 +402,7 @@ export default function SearchBox(props: { stuck: boolean }) {
                   when={!("raw" in clause) && clause}
                   fallback={
                     <button
-                      {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }))}
+                      {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }), { touch: "hold" })}
                       class={{ chip: true, raw: true, carried: isCarried(index(), -1) }}
                       style={{ order: 2 * index() + 2 }}
                     >

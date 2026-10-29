@@ -41,8 +41,8 @@ async function drag(name, from, to, holdMs = 0) {
 const tag = (t) => () => page.locator(".hero-cloud .tag", { hasText: t }).first();
 const chip = (t) => () => page.locator(".search .chip", { hasText: t }).first();
 const zone = (t) => () => center(page.locator(".drop-zone", { hasText: t }));
-await drag("chip workflow -> Without", chip("workflow"), zone("Without"));
-await drag("chip workflow -> out", chip("workflow"), async () => ({ x: 200, y: 800 }));
+await drag("chip workflow hold -> Without", chip("workflow"), zone("Without"), 600);
+await drag("chip workflow hold -> out", chip("workflow"), async () => ({ x: 200, y: 800 }), 600);
 await drag("tag swipe up (page scrolls)", tag("kind:post"), null);
 await drag("tag hold -> Add", tag("kind:post"), zone("Add"), 600);
 await drag("tag hold -> Without", tag("kind:post"), zone("Without"), 600);
@@ -57,6 +57,20 @@ await drag("tag hold -> and over claude", tag("kind:post"), () => center(page.lo
   await touch("touchEnd");
   await page.waitForTimeout(400);
   console.log("tag row swipe left".padEnd(30), "->", JSON.stringify(await read()));
+}
+// a swipe along the chips scrolls their one row, nothing is dragged
+{
+  await page.goto("about:blank");
+  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent("date:2026-10-29 weight:>=1 sort:views agents product:t3-code open-source harness business ui"));
+  await page.waitForTimeout(400);
+  const before = await page.evaluate(() => document.querySelector(".chips").scrollLeft);
+  const s = await center(chip("weight")());
+  await touch("touchStart", s.x, s.y);
+  for (let i = 1; i <= 10; i++) { await touch("touchMove", s.x - i * 20, s.y); await page.waitForTimeout(16); }
+  await touch("touchEnd");
+  await page.waitForTimeout(400);
+  const after = await page.evaluate(() => document.querySelector(".chips").scrollLeft);
+  console.log("chip row swipe left".padEnd(30), "-> scrollLeft", before, "->", after, JSON.stringify(await read()));
 }
 // a hold let go in place opens the tag menu, and the tag does not also search
 {

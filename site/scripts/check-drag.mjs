@@ -91,9 +91,11 @@ await browser.close();
     await p3.waitForTimeout(80);
     const dimmed = await p3.locator("[data-drag-source]").count();
     // nothing on the board may hide another place: the middle of each place must be that place
+    // (places scrolled past an end of the row are out of sight on purpose)
     const hidden = await p3.evaluate(() =>
       [...document.querySelectorAll(".search [data-drop]")]
         .filter((el) => el.dataset.drop !== "field")
+        .filter((el) => { const r = el.getBoundingClientRect(), row = document.querySelector(".chips").getBoundingClientRect(); return !el.closest(".chips") || (r.left >= row.left && r.right <= row.right); })
         .filter((el) => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest("[data-drop]") !== el; })
         .map((el) => el.dataset.drop),
     );
@@ -105,10 +107,19 @@ await browser.close();
   }
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
   await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone", { hasText: "Without" })));
-  await dragTag("many: tag -> or under ui", "workflow", () => mid(p3.locator(".or-tab").nth(4)));
-  await dragTag("many: and tabs only in group", "workflow", async () => {
+  await dragTag("many: tag -> or under harness", "workflow", () => mid(p3.locator(".or-tab").nth(2)));
+  await dragTag("many: and tab in group", "workflow", async () => {
     console.log("  and tabs over:", await p3.evaluate(() => [...document.querySelectorAll(".and-tab")].map((el) => el.nextElementSibling?.textContent)));
     return mid(p3.locator(".and-tab").nth(1));
+  });
+  // the last chips are past the right end: held at that end, the row scrolls to them
+  await dragTag("many: scroll right, or last", "workflow", async () => {
+    const row = await p3.locator(".chips").boundingBox();
+    const before = await p3.evaluate(() => document.querySelector(".chips").scrollLeft);
+    await p3.mouse.move(row.x + row.width - 12, row.y + row.height / 2, { steps: 5 });
+    await p3.waitForTimeout(1500);
+    console.log("  row scrollLeft:", before, "->", await p3.evaluate(() => document.querySelector(".chips").scrollLeft));
+    return mid(p3.locator(".or-tab").last());
   });
   // an excluded tag counts as used in the cloud
   console.log("excluded ui marked used".padEnd(28), "->", await p3.locator(".hero-cloud .tag.active.excluded", { hasText: "ui" }).count());
