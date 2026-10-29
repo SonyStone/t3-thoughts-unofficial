@@ -5,6 +5,7 @@
  *   opus -codex                  AND with a space (or a comma, &&, AND), NOT with - (or !, NOT)
  *   mood:hype || mood:salty      OR with || (or OR), parentheses group
  *   person:*  "thundering herd"  wildcards, quoted phrases
+ *   text:"thundering herd"       text search as a term of its own
  */
 
 export type Query =
@@ -26,6 +27,13 @@ export function tokenize(query: string): string[] {
     if (operator) {
       tokens.push(operator[1]);
       i += operator[1].length;
+      continue;
+    }
+    // a field with a quoted value stays one term: text:"thundering herd"
+    const quotedField = rest.match(/^[\w-]+:"[^"]*"?/);
+    if (quotedField) {
+      tokens.push(quotedField[0]);
+      i += quotedField[0].length;
       continue;
     }
     if (rest.startsWith('"')) {

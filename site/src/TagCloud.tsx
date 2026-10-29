@@ -1,4 +1,4 @@
-import { createMemo, For, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { entries, type Kind } from "./content";
 import { t } from "./i18n";
 import { CLOUD_SORTS, cloudSort, setCloudSort, type CloudSort } from "./prefs";
@@ -43,30 +43,59 @@ export function CloudSortSwitch() {
   );
 }
 
+const days = [...new Set(entries.map((entry) => entry.day))].sort().reverse();
+const byWeight = (min: number) => entries.filter((entry) => entry.items.some((item) => item.weight >= min)).length;
+
 /**
- * Tags to start a search from. Under the search box it stays short (topics and type);
- * in the dropdown of the stuck search it shows mood and format too.
+ * Quick terms that are not tags: how to order, which rating, which day. Sort, weight and
+ * date are exclusive, so a click swaps one for another (see clauses.ts).
+ */
+const quick: { key: "sortBy" | "rating" | "day"; tags: [string, number | undefined][] }[] = [
+  { key: "sortBy", tags: [["sort:likes", undefined], ["sort:views", undefined]] },
+  { key: "rating", tags: [["weight:3", byWeight(3)], ["weight:>=1", byWeight(1)]] },
+  { key: "day", tags: days.slice(0, 5).map((day) => [`date:${day}`, entries.filter((entry) => entry.day === day).length]) },
+];
+
+const [expanded, setExpanded] = createSignal(false);
+
+/**
+ * Tags to start a search from. Under the search box it is short (topics, type and the quick
+ * terms) until "All tags" opens it in place with every tag; in the dropdown of the stuck
+ * search it is always full.
  */
 export default function TagCloud(props: { short?: boolean }) {
+  const full = () => !props.short || expanded();
   const groups = createMemo(() =>
     [
-      { key: "popular", tags: ordered(topical, cloudSort(), props.short ? 14 : 24) },
-      { key: "kind", tags: kindCounts },
-      ...(props.short
-        ? []
-        : [
+      { key: "popular", tags: ordered(topical, cloudSort(), full() ? topical.length : 14) as [string, number | undefined][] },
+      { key: "kind", tags: kindCounts as [string, number | undefined][] },
+      // a quick term that finds nothing (no key posts yet) is left out
+      ...quick.map((group) => ({ ...group, tags: group.tags.filter(([, count]) => count !== 0) })),
+      ...(full()
+        ? [
             { key: "mood", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "mood"), cloudSort(), 20) },
             { key: "format", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "format"), cloudSort(), 20) },
-          ]),
+            { key: "people", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "person"), cloudSort(), 60) },
+          ]
+        : []),
     ].filter((group) => group.tags.length > 0),
   );
   return (
-    <div class={{ cloud: true, short: !!props.short }}>
+    <div class={{ cloud: true, short: !!props.short, expanded: full() }}>
       <div class="cloud-bar">
         <CloudSortSwitch />
-        <a class="cloud-more" href="#/tags">
-          {t().cloud.more}
-        </a>
+        <Show
+          when={props.short}
+          fallback={
+            <a class="cloud-more" href="#/tags">
+              {t().cloud.page}
+            </a>
+          }
+        >
+          <button class="cloud-more" aria-expanded={expanded() ? "true" : "false"} onClick={() => setExpanded(!expanded())}>
+            {expanded() ? t().cloud.less : t().cloud.more}
+          </button>
+        </Show>
       </div>
       <For each={groups()}>
         {(group) => (

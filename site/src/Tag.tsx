@@ -41,8 +41,8 @@ export function TagLabel(props: { tag: string }) {
 }
 
 /**
- * A tag narrows the current search by itself (a click), opens the tag menu (a right
- * click) and can be dragged into the search box. Colored by namespace as on derpibooru.
+ * A tag narrows the current search by itself (a click; a second click takes it out again),
+ * opens the tag menu (a right click) and can be dragged into the search box. Colored by namespace as on derpibooru.
  */
 export function Tag(props: { tag: string; count?: number }) {
   const press = longPress(() => props.tag);
@@ -50,7 +50,7 @@ export function Tag(props: { tag: string; count?: number }) {
     <a
       class={{ tag: true, active: hasTag(route().q, props.tag), excluded: excludesTag(route().q, props.tag) }}
       data-ns={namespaceKey(props.tag)}
-      href={feedHref(applyTag(route().q, props.tag, "and"))}
+      href={feedHref(applyTag(route().q, props.tag, hasTag(route().q, props.tag) || excludesTag(route().q, props.tag) ? "remove" : "and"))}
       title={describe(vocabulary.tags[props.tag])}
       draggable="true"
       onClick={(event) => press.onClick(event) || event.stopPropagation()}

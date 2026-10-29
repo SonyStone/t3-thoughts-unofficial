@@ -4,10 +4,13 @@ import { allowDrop, beginDrag, dragged, endDrag, startDrag } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { currentQuery, route, setQuery } from "./route";
-import { suggest } from "./search";
+import { knowsTerm, suggest, textTerm } from "./search";
 import { namespaceKey, TagLabel } from "./Tag";
 import TagCloud from "./TagCloud";
 import { openTagMenu } from "./TagMenu";
+
+/** Where a dragged tag or chip can land: a place among the chips, or one of the big zones. */
+type Target = Drop | "negate" | "remove" | "only";
 
 /** A space ends a term unless it sits inside an open quote. */
 const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
@@ -29,22 +32,36 @@ export default function SearchBox(props: { stuck: boolean }) {
   const [over, setOver] = createSignal<string | undefined>();
 
   const clauses = createMemo(() => toClauses(route().q));
-  const options = createMemo(() => (focused() ? suggest(draft().replace(/^[-!]/, "")) : []));
+  // tags for one word; the words themselves as a text search, last, for anything that is not all tags
+  const options = createMemo((): [string, number][] => {
+    const value = draft().trim();
+    if (!focused() || !value) return [];
+    const words = value.split(/\s+/);
+    if (words.length > 1) return words.every(knowsTerm) ? [] : [[textTerm(value), -1]];
+    const tags = suggest(value.replace(/^[-!]/, ""));
+    return knowsTerm(value) && tags.length > 0 ? tags : [...tags, [textTerm(value), -1]];
+  });
   const showCloud = () => focused() && props.stuck && !draft().trim();
 
+  /** Known terms become chips of their own; anything else is one text search chip. */
   const commit = (text: string) => {
     const value = text.trim().replace(/,$/, "").trim();
     if (!value) return;
     const q = currentQuery();
-    // a negated word goes through the menu logic (no duplicates); other text joins as its own clauses
+    const words = value.split(/\s+/);
+    if (!words.every(knowsTerm)) {
+      pick(textTerm(value));
+      return;
+    }
+    // a negated word goes through the menu logic (no duplicates); other words join as their own clauses
     setQuery(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
     setDraft("");
     setActive(0);
   };
 
-  const pick = (tag: string) => {
-    const negate = /^[-!]/.test(draft());
-    setQuery(applyTag(currentQuery(), tag, negate ? "exclude" : "and"));
+  const pick = (term: string) => {
+    const negate = /^[-!]/.test(term) || /^[-!]/.test(draft());
+    setQuery(applyTag(currentQuery(), term.replace(/^[-!]/, ""), negate ? "exclude" : "and"));
     setDraft("");
     setActive(0);
     input?.focus();
@@ -68,31 +85,30 @@ export default function SearchBox(props: { stuck: boolean }) {
     } else if (list.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
       event.preventDefault();
       pick(list[Math.min(active(), list.length - 1)][0]);
-    } else if (event.key === "Enter" || event.key === "," || (event.key === " " && draft().trim() && !openQuote(draft()))) {
+    } else if (event.key === "Enter" || event.key === ",") {
+      event.preventDefault();
+      commit(draft());
+    } else if (event.key === " " && isOneKnownWord(draft())) {
+      // a tag ends at a space; other words keep going, they are a phrase to search for
       event.preventDefault();
       commit(draft());
     }
   };
 
-  // pasted "opus -codex": every finished word becomes a chip, the last one stays in the field
+  const isOneKnownWord = (text: string) => /^\S+$/.test(text.trim()) && !openQuote(text) && knowsTerm(text);
+
   const onInput = (value: string) => {
-    const done = value.match(/^(.*\S)\s+(\S*)$/);
-    if (done && !openQuote(done[1])) {
-      commit(done[1]);
-      setDraft(done[2]);
-    } else {
-      setDraft(value);
-    }
+    setDraft(value);
     setActive(0);
   };
 
-  const drop = (event: DragEvent, to: Drop | "negate" | "remove") => {
+  const drop = (event: DragEvent, to: Target) => {
     event.preventDefault();
     event.stopPropagation();
     place(to);
   };
 
-  const place = (to: Drop | "negate" | "remove") => {
+  const place = (to: Target) => {
     const what = dragged();
     setOver(undefined);
     endDrag();
@@ -100,16 +116,18 @@ export default function SearchBox(props: { stuck: boolean }) {
     const q = currentQuery();
     if (what.kind === "tag") {
       if (to === "remove") return;
-      setQuery(to === "negate" ? applyTag(q, what.tag, "exclude") : dropTag(q, what.tag, to));
+      if (to === "only") setQuery(what.tag);
+      else setQuery(to === "negate" ? applyTag(q, what.tag, "exclude") : dropTag(q, what.tag, to));
       return;
     }
     const at = { clause: what.clause, term: what.term };
-    setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
+    if (to === "only") setQuery(`${what.neg ? "-" : ""}${what.raw}`);
+    else setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
   };
 
   // every drop place by its key, so a finger drag can find what is under it (data-drop)
-  const targets = new Map<string, Drop | "negate" | "remove">();
-  const target = (key: string, to: Drop | "negate" | "remove") => (targets.set(key, to), {
+  const targets = new Map<string, Target>();
+  const target = (key: string, to: Target) => (targets.set(key, to), {
     "data-drop": key,
     onDragOver: (event: DragEvent) => {
       allowDrop(event);
@@ -251,6 +269,10 @@ export default function SearchBox(props: { stuck: boolean }) {
                         </>
                       )}
                     </For>
+                    {/* dropped here, the tag joins this chip with "or" */}
+                    <Show when={dragged()}>
+                      <span class="or-pocket">{t().or}</span>
+                    </Show>
                   </span>
                 )}
               </Show>
@@ -274,12 +296,23 @@ export default function SearchBox(props: { stuck: boolean }) {
           }}
           onKeyDown={onKeyDown}
         />
-        <Show when={dragged()?.kind === "chip"}>
-          <span class={{ "drop-zone": true, over: over() === "negate" }} {...target("negate", "negate")}>
-            {t().dropNegate}
-          </span>
-          <span class={{ "drop-zone": true, remove: true, over: over() === "remove" }} {...target("remove", "remove")}>
-            {t().dropRemove}
+        {/* while something is dragged, the free part of the box becomes big zones, one per action */}
+        <Show when={dragged()}>
+          <span class="drop-board">
+            <span class={{ "drop-zone": true, over: over() === "add" }} {...target("add", { before: clauses().length })}>
+              <b>+</b> {t().drop.add}
+            </span>
+            <span class={{ "drop-zone": true, negate: true, over: over() === "negate" }} {...target("negate", "negate")}>
+              <b>−</b> {t().drop.negate}
+            </span>
+            <span class={{ "drop-zone": true, over: over() === "only" }} {...target("only", "only")}>
+              <b>=</b> {t().drop.only}
+            </span>
+            <Show when={dragged()?.kind === "chip"}>
+              <span class={{ "drop-zone": true, remove: true, over: over() === "remove" }} {...target("remove", "remove")}>
+                <b>×</b> {t().drop.remove}
+              </span>
+            </Show>
           </span>
         </Show>
         <Show when={route().q && !dragged()}>
@@ -320,6 +353,9 @@ export default function SearchBox(props: { stuck: boolean }) {
                     <span>{tag}</span>
                     <Show when={count >= 0}>
                       <span class="tag-count">{count}</span>
+                    </Show>
+                    <Show when={/^-?text:/.test(tag)}>
+                      <span class="tag-count">{t().searchText}</span>
                     </Show>
                   </li>
                 )}

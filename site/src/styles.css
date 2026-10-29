@@ -294,7 +294,7 @@ a {
 .hero-text {
   position: absolute;
   left: 6%;
-  top: 44%;
+  top: 66%;
   z-index: 1;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.7);
 }
@@ -535,6 +535,12 @@ main.on-hero {
   border-radius: 11px;
 }
 
+.clause {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .clause.over {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -568,26 +574,69 @@ main.on-hero {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
-.drop-zone {
-  padding: 8px 14px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 10px;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.82rem;
+/* the free part of the search box while dragging: one big zone per action */
+.drop-board {
+  display: flex;
+  flex: 1 1 420px;
+  gap: 8px;
+  align-self: stretch;
 }
 
-.drop-zone:first-of-type {
-  margin-left: auto;
+.search.dragging .search-field input,
+.search.dragging .search-kbd {
+  display: none;
+}
+
+.drop-zone {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 6px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  color: var(--text-2);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.drop-zone b {
+  font-family: var(--mono);
+  font-size: 1.1rem;
 }
 
 .drop-zone.over {
+  border-style: solid;
   border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
   color: var(--text);
 }
 
+.drop-zone.negate.over,
 .drop-zone.remove.over {
   border-color: #e66767;
+  background: color-mix(in srgb, #e66767 14%, transparent);
+}
+
+/* a pocket after each chip while dragging: drop here to join with "or" */
+.or-pocket {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  align-self: stretch;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.clause.over .or-pocket {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .search-drop {
@@ -681,8 +730,14 @@ main.on-hero {
 }
 
 .cloud-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
   font-size: 0.88rem;
   text-decoration: none;
+  cursor: pointer;
 }
 
 .cloud-more:hover {
@@ -1050,9 +1105,6 @@ main.on-hero {
   object-fit: cover;
 }
 
-.row-post .tile-thumb img {
-  border-radius: var(--radius-control);
-}
 
 .tile-duration {
   position: absolute;
@@ -1079,17 +1131,37 @@ main.on-hero {
 
 /* List: our reading on the left, his post on the right */
 
+/* List: the same card as a tile, laid sideways: our part on the left, the original edge to edge on the right */
 .rows {
   display: grid;
-  border-top: 1px solid var(--line);
+  gap: 16px;
 }
 
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-  gap: 32px;
-  padding: 24px 0;
-  border-bottom: 1px solid var(--line);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.row:hover {
+  border-color: var(--line-strong);
+}
+
+.row-main {
+  padding: 20px 24px;
+}
+
+.row-post {
+  border-left: 1px solid var(--x-line);
+  background: var(--x-bg);
+}
+
+.row-post .x-card {
+  border: 0;
+  border-radius: 0;
 }
 
 .row .entry-title {
@@ -1098,7 +1170,13 @@ main.on-hero {
 
 .related .row {
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+}
+
+/* stacked, the original goes on top, as in a tile */
+.related .row-post {
+  order: -1;
+  border-bottom: 1px solid var(--x-line);
+  border-left: 0;
 }
 
 /* a tall screenshot in a list row is cut from the top; the post opens on X anyway */
@@ -2243,7 +2321,12 @@ footer {
 
   .row {
     grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
+  }
+
+  .row-post {
+    order: -1;
+    border-bottom: 1px solid var(--x-line);
+    border-left: 0;
   }
 
   /* stacked, the post itself follows; the summary would say the same twice */
@@ -2294,10 +2377,10 @@ footer {
     --bar-height: 76px;
   }
 
-  /* the frame keeps its proportions here too; only the tagline has a floor to stay readable */
+  /* the frame keeps its proportions here too; a readable tagline would not fit above the
+     search, so on a phone the title stands alone (the ribbon and footer say "unofficial") */
   .hero p {
-    max-width: calc(100% - 96px);
-    font-size: max(0.72rem, 1.4cqw);
+    display: none;
   }
 
   .topnav {
@@ -2376,7 +2459,15 @@ footer {
     gap: 6px;
   }
 
-  .hero-cloud .cloud-tags {
+  .drop-board {
+    flex-wrap: wrap;
+  }
+
+  .drop-zone {
+    flex: 1 1 40%;
+  }
+
+  .hero-cloud .cloud:not(.expanded) .cloud-tags {
     mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
     flex-wrap: nowrap;
     margin: 0 -12px;

@@ -110,7 +110,8 @@ function term(raw: string): Node {
     if (name === "kind") return { op: "term", test: (doc) => doc.kinds.has(value) };
     if (name === "date") return { op: "term", test: (doc) => doc.days.some((day) => compare(day, value)) };
     if (name === "weight") return { op: "term", test: (doc) => compare(doc.weight, value) };
-    return { op: "term", test: (doc) => doc.text.includes(value) };
+    const needle = value.replace(/^"|"$/g, "");
+    return { op: "term", test: (doc) => doc.text.includes(needle) };
   }
   if (text.includes("*")) {
     const pattern = wildcard(text);
@@ -240,4 +241,24 @@ export function similarTags(raw: string, limit = 6): [string, number][] {
     .filter(([tag]) => tag !== self && namespaceOf(tag) === ns)
     .filter(([tag]) => aliased.includes(tag) || words(tag).some((word) => mine.some((other) => word.startsWith(other) || other.startsWith(word))))
     .slice(0, limit);
+}
+
+const FIELDS = /^(kind|date|weight|text|sort|likes|views|replies|reposts|quotes|bookmarks|comments):/;
+
+/**
+ * Whether a typed word is a term the search knows (a tag, an alias, a field, a wildcard)
+ * rather than words to look for in the text.
+ */
+export function knowsTerm(raw: string): boolean {
+  const text = raw.replace(/^[-!]/, "").trim().toLowerCase();
+  if (!text) return false;
+  if (FIELDS.test(text) || text.includes("*") || text.startsWith('"')) return true;
+  const canonical = vocabulary.aliases[text] ?? text;
+  return usedTags.some((tag) => tag === canonical || tag.endsWith(`:${canonical}`));
+}
+
+/** Words to look for in the text, as one term: text:"thundering herd". */
+export function textTerm(words: string): string {
+  const neg = /^[-!]/.test(words) ? "-" : "";
+  return `${neg}text:"${words.replace(/^[-!]/, "").replace(/"/g, "").trim()}"`;
 }

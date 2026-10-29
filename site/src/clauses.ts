@@ -60,6 +60,22 @@ export type TagAction = "only" | "and" | "or" | "exclude" | "remove";
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+/**
+ * Namespaces where an entry has one value, so two of them together find nothing: a new one
+ * replaces the old instead of narrowing to zero. A post is one kind and one mood; one sort,
+ * one rating floor and one day make sense at a time.
+ */
+const EXCLUSIVE = new Set(["kind", "mood", "sort", "weight", "date"]);
+
+const prefix = (tag: string) => (tag.includes(":") ? tag.slice(0, tag.indexOf(":")).toLowerCase() : undefined);
+
+/** Drops required tags that the new one replaces (same exclusive namespace); exclusions stay. */
+function withoutRivals(clauses: Clause[], tag: string): Clause[] {
+  const ns = prefix(tag);
+  if (!ns || !EXCLUSIVE.has(ns)) return clauses;
+  return clauses.filter((c) => "raw" in c || c.terms.length > 1 || c.terms[0].neg || prefix(c.terms[0].raw) !== ns);
+}
+
 function without(clauses: Clause[], tag: string): Clause[] {
   return clauses
     .map((c) => ("raw" in c ? c : { terms: c.terms.filter((t) => !same(t.raw, tag)) }))
@@ -76,7 +92,7 @@ export function applyTag(query: string, tag: string, action: TagAction): string 
   if (action === "only") return tag;
   if (action === "remove") return toQuery(without(clauses, tag));
   const rest = without(clauses, tag);
-  if (action === "and") return toQuery([...rest, { terms: [{ raw: tag, neg: false }] }]);
+  if (action === "and") return toQuery([...withoutRivals(rest, tag), { terms: [{ raw: tag, neg: false }] }]);
   if (action === "exclude") return toQuery([...rest, { terms: [{ raw: tag, neg: true }] }]);
   // or: join the last chip clause, or start one
   const last = rest.at(-1);
@@ -115,7 +131,7 @@ export function moveTerm(query: string, from: { clause: number; term: number }, 
 
 /** A tag dragged in from the page: a new clause, or one more OR in a clause. */
 export function dropTag(query: string, tag: string, to: Drop): string {
-  const clauses = without(toClauses(query), tag);
+  const clauses = "join" in to ? without(toClauses(query), tag) : withoutRivals(without(toClauses(query), tag), tag);
   const term = { raw: tag, neg: false };
   if ("join" in to) {
     const target = clauses[to.join];
