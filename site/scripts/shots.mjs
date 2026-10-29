@@ -15,11 +15,16 @@ const views = [
     await page.getByRole("radio", { name: /List|Список/ }).click();
   }],
   ["tag-menu", "#/?q=product:t3-code", async (page) => {
-    await page.locator(".hero-cloud .tag").nth(3).click({ button: "right" });
+    const tag = page.locator(".hero-cloud .tag").nth(3);
+    await tag.scrollIntoViewIfNeeded();
+    await tag.click({ button: "right" });
+    await page.locator('[role="menu"]').waitFor();
+    await page.waitForTimeout(150);
   }],
   ["entry", "#/", async (page) => {
     // the first tile of the feed, opened the way a reader opens it
-    await page.locator(".tile").first().click();
+    await page.locator(".tile .entry-title a").first().click();
+    await page.locator(".post-page").waitFor();
   }],
   ["tags", "#/tags"],
   ["stats", "#/stats"],

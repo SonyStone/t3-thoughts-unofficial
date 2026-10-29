@@ -9,7 +9,7 @@ import { XCompact } from "./XPost";
 
 const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
 const COLUMN = 380;
-const GAP = 32;
+const GAP = 20;
 const TAGS_ON_TILE = 5;
 
 /** A rough height in pixels, enough to keep columns even without measuring the DOM. */
@@ -19,7 +19,7 @@ function estimate(entry: Entry): number {
   const text = (original?.text ?? item.text ?? "").length;
   const parent = item.parent && item.parent !== "unavailable" ? 44 : 0;
   const media = item.media.length > 0 || item.kind === "video" ? 200 : 0;
-  return 190 + Math.min(text, 300) * 0.5 + parent + media;
+  return 250 + Math.min(text, 300) * 0.5 + parent + media;
 }
 
 /** Entries laid into as many columns as fit, each into the shortest one, so reading order stays left to right. */
@@ -86,14 +86,32 @@ function TileTags(props: { entry: Entry }) {
   );
 }
 
-function VideoPreview(props: { item: Item }) {
+/** The YouTube thumbnail, which like an X post opens the original. */
+function VideoThumb(props: { item: Item }) {
+  return (
+    <a class="tile-thumb" href={props.item.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+      <img src={`https://i.ytimg.com/vi/${props.item.id}/hqdefault.jpg`} loading="lazy" alt="" />
+      <Show when={props.item.duration}>
+        <span class="tile-duration">{props.item.duration}</span>
+      </Show>
+    </a>
+  );
+}
+
+function ChapterMap(props: { item: Item }) {
   const matcher = createMemo(() => chapterMatcher(route().q));
   return (
+    <Show when={props.item.chapters}>
+      <VideoMap item={props.item} matches={(chapter) => matcher()(chapter.tags)} />
+    </Show>
+  );
+}
+
+function VideoPreview(props: { item: Item }) {
+  return (
     <>
-      <img class="tile-thumb" src={`https://i.ytimg.com/vi/${props.item.id}/hqdefault.jpg`} loading="lazy" alt="" />
-      <Show when={props.item.chapters}>
-        <VideoMap item={props.item} matches={(chapter) => matcher()(chapter.tags)} />
-      </Show>
+      <VideoThumb item={props.item} />
+      <ChapterMap item={props.item} />
     </>
   );
 }
@@ -119,15 +137,24 @@ function Tile(props: { entry: Entry }) {
   const item = () => props.entry.latest;
   return (
     <article class={{ tile: true, video: item().kind === "video" }} data-weight={weightOf(props.entry)} {...open(props.entry)}>
-      <EntryMeta item={item()} />
-      <Title entry={props.entry} />
-      <Show when={item().kind === "video"} fallback={<XCompact item={item()} />}>
-        <VideoPreview item={item()} />
-      </Show>
-      <Show when={props.entry.items.length > 1}>
-        <p class="tile-thread">{t().tile.more(props.entry.items.length - 1)}</p>
-      </Show>
-      <TileTags entry={props.entry} />
+      {/* a card in the Material sense: the original across the top, our part under it */}
+      <div class="tile-media">
+        <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>
+          <VideoThumb item={item()} />
+        </Show>
+      </div>
+      <div class="tile-body">
+        <Show when={item().kind === "video"}>
+          <ChapterMap item={item()} />
+        </Show>
+        <EntryMeta item={item()} />
+        <Title entry={props.entry} />
+        <p class="tile-summary">{summary(item())}</p>
+        <Show when={props.entry.items.length > 1}>
+          <p class="tile-thread">{t().tile.more(props.entry.items.length - 1)}</p>
+        </Show>
+        <TileTags entry={props.entry} />
+      </div>
     </article>
   );
 }

@@ -84,12 +84,14 @@ export default function TagMenu() {
     const onNavigate = () => setMenu(undefined);
     window.addEventListener("hashchange", onNavigate);
     window.addEventListener("click", close);
-    window.addEventListener("scroll", close, true);
+    // only a scroll of the page moves the tag away; a tag row scrolled sideways or the menu itself does not
+    const onScroll = (event: Event) => (event.target === document || event.target === document.documentElement) && setMenu(undefined);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("hashchange", onNavigate);
       window.removeEventListener("click", close);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("keydown", onKey);
     };
   });
