@@ -193,3 +193,51 @@ export function suggest(fragment: string, limit = 8): [string, number][] {
   const contains = tagCounts.filter(([tag]) => !starts.some(([other]) => other === tag) && tag.includes(needle));
   return [...special, ...starts, ...contains].slice(0, limit);
 }
+
+/** When each tag was last used, for ordering a cloud by what is fresh. */
+export const tagLastSeen: Map<string, number> = (() => {
+  const seen = new Map<string, number>();
+  for (const doc of docs) {
+    const time = doc.entry.latest.createdAt.getTime();
+    for (const tag of doc.tags) seen.set(tag, Math.max(seen.get(tag) ?? 0, time));
+  }
+  return seen;
+})();
+
+const SIDE_NAMESPACES = new Set(["mood", "format", "kind"]);
+
+/**
+ * Tags Opus put on the same entries as this term, most shared first. Implied tags stay out:
+ * `model:opus-5.5` always comes with `model:opus`, which says nothing.
+ */
+export function relatedTags(raw: string, limit = 6): [string, number][] {
+  const found = search(raw);
+  const counts = new Map<string, number>();
+  for (const entry of found) {
+    for (const tag of new Set(entry.items.flatMap((item) => item.ownTags))) {
+      if (SIDE_NAMESPACES.has(namespaceOf(tag) ?? "")) continue;
+      counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+  }
+  const self = raw.replace(/^[-!]/, "").toLowerCase();
+  return [...counts]
+    .filter(([tag]) => tag !== self && !tag.endsWith(`:${self}`))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit);
+}
+
+const words = (tag: string) => (tag.split(":").pop() ?? tag).split(/[-._]/).filter((word) => word.length >= 3);
+
+/** Tags with a name like this one in the same namespace (opus, opus-5.5) and its aliases. */
+export function similarTags(raw: string, limit = 6): [string, number][] {
+  const self = raw.replace(/^[-!]/, "").toLowerCase();
+  const ns = namespaceOf(self);
+  const mine = words(self);
+  const aliased = Object.entries(vocabulary.aliases)
+    .filter(([, canonical]) => canonical === self)
+    .map(([alias]) => alias);
+  return tagCounts
+    .filter(([tag]) => tag !== self && namespaceOf(tag) === ns)
+    .filter(([tag]) => aliased.includes(tag) || words(tag).some((word) => mine.some((other) => word.startsWith(other) || other.startsWith(word))))
+    .slice(0, limit);
+}

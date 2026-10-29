@@ -1,7 +1,9 @@
+import type { JSX } from "@solidjs/web";
 import { For, Show } from "solid-js";
 import { skipped } from "virtual:content";
 import { entries, entryMetric, items, localized, type Kind } from "./content";
 import { formatCount, formatDate, lang, t } from "./i18n";
+import { postHref } from "./route";
 import { tagCounts } from "./search";
 import { namespaceKey, Tag } from "./Tag";
 
@@ -25,47 +27,81 @@ function countBy<T>(list: T[], key: (item: T) => string): [string, number][] {
   return [...counts].sort((a, b) => b[1] - a[1]);
 }
 
-/** Posts per local hour as one row of 24 cells: one hue, brighter means more. */
-function HourStrip() {
-  const hours = Array.from({ length: 24 }, (_, hour) => items.filter((item) => item.createdAt.getHours() === hour).length);
-  const max = Math.max(...hours, 1);
-  const peak = hours.indexOf(Math.max(...hours));
-  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const stats = () => t().stats;
-  const shade = (count: number) => (count === 0 ? 0 : 20 + Math.round((count / max) * 80));
+type Bar = { label: JSX.Element; value: number; shown?: string; title?: string };
+
+/** Horizontal bars from one baseline, one hue; the value sits at the tip in text color. */
+function Bars(props: { rows: Bar[] }) {
+  const max = () => Math.max(...props.rows.map((row) => row.value), 1);
+  return (
+    <div class="bars">
+      <For each={props.rows}>
+        {(row) => (
+          <div class="bar-row" title={row.title}>
+            <div class="bar-label">{row.label}</div>
+            <div class="bar-track">
+              <span class="bar-fill" style={{ width: `${Math.max((row.value / max()) * 100, 1)}%` }} />
+              <span class="bar-value">{row.shown ?? row.value}</span>
+            </div>
+          </div>
+        )}
+      </For>
+    </div>
+  );
+}
+
+function Tile(props: { label: string; value: string | number; note?: string }) {
+  return (
+    <div class="stat-tile">
+      <span class="stat-label">{props.label}</span>
+      <span class="stat-value">{props.value}</span>
+      <Show when={props.note}>
+        <span class="stat-note">{props.note}</span>
+      </Show>
+    </div>
+  );
+}
+
+function Panel(props: { title: string; note?: string; wide?: boolean; children: JSX.Element }) {
+  return (
+    <section class={{ panel: true, wide: !!props.wide }}>
+      <h3>{props.title}</h3>
+      <Show when={props.note}>
+        <p class="panel-note">{props.note}</p>
+      </Show>
+      {props.children}
+    </section>
+  );
+}
+
+/** Posts per local hour as 24 columns from one baseline; the busiest hour is labeled. */
+function Hours(props: { hours: number[]; peak: number }) {
+  const max = () => Math.max(...props.hours, 1);
   return (
     <>
-      <div class="hours" role="img" aria-label={stats().hourAria(peak)}>
-        <For each={hours}>
+      <div class="hours" role="img" aria-label={t().stats.hourAria(props.peak)}>
+        <For each={props.hours}>
           {(count, hour) => (
-            <div
-              class="hour"
-              style={{ "--shade": `${shade(count)}%` }}
-              title={`${hour()}:00–${hour() + 1}:00 · ${count}`}
-            />
+            <div class={{ hour: true, peak: hour() === props.peak }} title={`${hour()}:00–${hour() + 1}:00 · ${count}`}>
+              <Show when={hour() === props.peak}>
+                <span class="hour-value">{count}</span>
+              </Show>
+              <span class="hour-bar" style={{ height: count ? `${(count / max()) * 100}%` : "0" }} />
+            </div>
           )}
         </For>
       </div>
-      <div class="hour-axis muted small">
+      <div class="hour-axis">
         <span>0</span>
         <span>6</span>
         <span>12</span>
         <span>18</span>
         <span>24</span>
       </div>
-      <p class="muted small">
-        {stats().peak(peak, hours[peak], zone)}{" "}
-        <span class="scale">
-          {stats().less} <i style={{ "--shade": "20%" }} />
-          <i style={{ "--shade": "60%" }} />
-          <i style={{ "--shade": "100%" }} /> {stats().more}
-        </span>
-      </p>
-      <details class="small">
-        <summary class="muted">{stats().asTable}</summary>
+      <details class="as-table">
+        <summary>{t().stats.asTable}</summary>
         <table class="stats-table">
           <tbody>
-            <For each={hours}>
+            <For each={props.hours}>
               {(count, hour) => (
                 <Show when={count > 0}>
                   <tr>
@@ -84,20 +120,6 @@ function HourStrip() {
   );
 }
 
-function Row(props: { label: string; value: string | number; note?: string }) {
-  return (
-    <div class="stat">
-      <dt>{props.label}</dt>
-      <dd>
-        {props.value}
-        <Show when={props.note}>
-          <span class="muted"> {props.note}</span>
-        </Show>
-      </dd>
-    </div>
-  );
-}
-
 export default function StatsPage() {
   const days = [...new Set(items.map((item) => item.day))].sort();
   const kinds = countBy(items, (item) => item.kind) as [Kind, number][];
@@ -105,111 +127,106 @@ export default function StatsPage() {
   const seen = items.length + skipped.length;
   const reasons = countBy(skipped, (skip) => (skip.reason.startsWith("opus:") ? "opus" : skip.reason));
   const theoText = items.map((item) => item.text ?? "").join("\n");
-  const tics = TICS.map(([label, pattern]) => [label, theoText.match(pattern)?.length ?? 0] as const).filter(
-    ([, count]) => count > 0,
-  );
+  const tics = TICS.map(([label, pattern]) => [label, theoText.match(pattern)?.length ?? 0] as const).filter(([, count]) => count > 0);
   const people = tagCounts.filter(([tag]) => namespaceKey(tag) === "person").slice(0, 8);
+  const topics = tagCounts.filter(([tag]) => !["person", "mood", "format"].includes(namespaceKey(tag))).slice(0, 10);
+  const moods = tagCounts.filter(([tag]) => namespaceKey(tag) === "mood");
+  const hours = Array.from({ length: 24 }, (_, hour) => items.filter((item) => item.createdAt.getHours() === hour).length);
+  const peak = hours.indexOf(Math.max(...hours));
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   // a repost's numbers belong to someone else's post, so it stays out of the likes ranking
   const liked = entries
     .filter((entry) => entry.latest.kind !== "repost" && entryMetric(entry, "likes") >= 0)
     .sort((a, b) => entryMetric(b, "likes") - entryMetric(a, "likes"))
     .slice(0, 5);
-  const likesByKind = countBy(
-    items.filter((item) => item.kind !== "repost"),
-    (item) => item.kind,
-  )
-    .map(([kind]) => {
+  const likesByKind = (["video", "post", "quote", "reply"] as Kind[])
+    .map((kind) => {
       const counted = items.filter((item) => item.kind === kind && item.metrics?.likes !== undefined);
       const total = counted.reduce((sum, item) => sum + item.metrics!.likes!, 0);
-      return [kind as Kind, counted.length ? Math.round(total / counted.length) : -1] as const;
+      return [kind, counted.length ? Math.round(total / counted.length) : -1] as const;
     })
     .filter(([, average]) => average >= 0)
     .sort((a, b) => b[1] - a[1]);
   const s = () => t().stats;
-  const leaders = ["product", "model", "company", "tech", "sponsor"]
-    .map((ns) => ({ ns, tags: tagCounts.filter(([tag]) => namespaceKey(tag) === ns).slice(0, 5) }))
-    .filter((group) => group.tags.length > 0);
+  const tagBars = (list: [string, number][]): Bar[] => list.map(([tag, count]) => ({ label: <Tag tag={tag} />, value: count }));
 
   return (
-    <section class="page">
-      <h2>{s().title}</h2>
-      <p class="muted">
-        {formatDate(new Date(`${days[0]}T12:00:00`), { day: "numeric", month: "long" })} —{" "}
-        {formatDate(new Date(`${days.at(-1)}T12:00:00`), { day: "numeric", month: "long" })}, {s().days(days.length)}
-      </p>
+    <section class="page wide stats-page">
+      <header class="page-head">
+        <h1>{s().title}</h1>
+        <p class="muted">
+          {formatDate(new Date(`${days[0]}T12:00:00`), { day: "numeric", month: "long" })} —{" "}
+          {formatDate(new Date(`${days.at(-1)}T12:00:00`), { day: "numeric", month: "long" })}, {s().days(days.length)}
+        </p>
+      </header>
 
-      <h3>{s().onSite}</h3>
-      <dl class="stats">
-        <Row label={s().entries} value={entries.length} note={threads ? s().threads(threads) : undefined} />
-        <For each={kinds}>{([kind, count]) => <Row label={s().kindsPlural[kind]} value={count} />}</For>
-      </dl>
-
-      <Show when={liked.length > 0}>
-        <h3>{s().top}</h3>
-        <ol class="top">
-          <For each={liked}>
-            {(entry) => (
-              <li>
-                <a href={entry.latest.url} target="_blank" rel="noreferrer">
-                  {localized(entry.latest, lang()).title}
-                </a>
-                <span class="muted"> · {t().metrics.likes(entryMetric(entry, "likes"), formatCount(entryMetric(entry, "likes")))}</span>
-              </li>
-            )}
-          </For>
-        </ol>
-        <p class="muted small">{s().avgLikes}</p>
-        <dl class="stats nested">
-          <For each={likesByKind}>
-            {([kind, average]) => <Row label={s().kindsPlural[kind]} value={formatCount(average)} />}
-          </For>
-        </dl>
-      </Show>
-
-      <Show when={skipped.length > 0}>
-        <h3>{s().shitpost}</h3>
-        <dl class="stats">
-          <Row label={s().seen} value={seen} />
-          <Row label={s().kept} value={items.length} note={`${percent(items.length, seen)}%`} />
-          <Row label={s().dropped} value={skipped.length} note={`${percent(skipped.length, seen)}%`} />
-        </dl>
-        <dl class="stats nested">
-          <For each={reasons}>{([reason, count]) => <Row label={s().reasons[reason] ?? reason} value={count} />}</For>
-        </dl>
-      </Show>
-
-      <h3>{s().when}</h3>
-      <HourStrip />
-
-      <h3>{s().about}</h3>
-      <For each={leaders}>
-        {(group) => (
-          <div class="stat-tags">
-            <span class="muted small">{t().namespaces[group.ns]}</span>
-            <For each={group.tags}>{([tag, count]) => <Tag tag={tag} count={count} />}</For>
-          </div>
-        )}
-      </For>
-      <div class="stat-tags">
-        <span class="muted small">{t().namespaces.topic}</span>
-        <For each={tagCounts.filter(([tag]) => namespaceKey(tag) === "topic").slice(0, 10)}>
-          {([tag, count]) => <Tag tag={tag} count={count} />}
-        </For>
+      <div class="stat-tiles">
+        <Tile label={s().entries} value={entries.length} note={threads ? s().threads(threads) : undefined} />
+        <Tile label={s().seen} value={seen} note={s().keptShare(percent(items.length, seen))} />
+        <Tile label={s().topLikes} value={liked[0] ? formatCount(entryMetric(liked[0], "likes")) : "—"} note={s().onePost} />
+        <Tile label={s().peakHour} value={`${peak}:00`} note={zone} />
       </div>
 
-      <Show when={people.length > 0}>
-        <h3>{s().people}</h3>
-        <div class="stat-tags">
-          <For each={people}>{([tag, count]) => <Tag tag={tag} count={count} />}</For>
-        </div>
-      </Show>
+      <div class="panels">
+        <Panel title={s().top}>
+          <Bars
+            rows={liked.map((entry) => ({
+              label: <a href={postHref(entry.latest.id)}>{localized(entry.latest, lang()).title}</a>,
+              value: entryMetric(entry, "likes"),
+              shown: formatCount(entryMetric(entry, "likes")),
+            }))}
+          />
+        </Panel>
 
-      <Show when={tics.length > 0}>
-        <h3>{s().tics}</h3>
-        <dl class="stats">
-          <For each={tics}>{([label, count]) => <Row label={label} value={count} />}</For>
-        </dl>
-      </Show>
+        <Panel title={s().onSite} note={s().byKind}>
+          <Bars rows={kinds.map(([kind, count]) => ({ label: s().kindsPlural[kind], value: count }))} />
+          <p class="panel-note">{s().avgLikes}</p>
+          <Bars rows={likesByKind.map(([kind, average]) => ({ label: s().kindsPlural[kind], value: average, shown: formatCount(average) }))} />
+        </Panel>
+
+        <Show when={skipped.length > 0}>
+          <Panel title={s().shitpost} note={s().shitpostNote(items.length, seen)}>
+            <div class="split" role="img" aria-label={`${s().kept} ${percent(items.length, seen)}%, ${s().dropped} ${percent(skipped.length, seen)}%`}>
+              <span class="split-kept" style={{ "flex-grow": String(items.length) }} title={`${s().kept}: ${items.length}`} />
+              <span class="split-dropped" style={{ "flex-grow": String(skipped.length) }} title={`${s().dropped}: ${skipped.length}`} />
+            </div>
+            <div class="split-legend">
+              <span>
+                <i class="split-kept" /> {s().kept} · {items.length}
+              </span>
+              <span>
+                <i class="split-dropped" /> {s().dropped} · {skipped.length}
+              </span>
+            </div>
+            <p class="panel-note">{s().why}</p>
+            <Bars rows={reasons.map(([reason, count]) => ({ label: s().reasons[reason] ?? reason, value: count }))} />
+          </Panel>
+        </Show>
+
+        <Panel title={s().when} note={s().peak(peak, hours[peak], zone)}>
+          <Hours hours={hours} peak={peak} />
+        </Panel>
+
+        <Panel title={s().about}>
+          <Bars rows={tagBars(topics)} />
+        </Panel>
+
+        <Panel title={s().mood}>
+          <Bars rows={tagBars(moods)} />
+        </Panel>
+
+        <Show when={people.length > 0}>
+          <Panel title={s().people}>
+            <Bars rows={tagBars(people)} />
+          </Panel>
+        </Show>
+
+        <Show when={tics.length > 0}>
+          <Panel title={s().tics}>
+            <Bars rows={tics.map(([label, count]) => ({ label, value: count }))} />
+          </Panel>
+        </Show>
+      </div>
     </section>
   );
 }

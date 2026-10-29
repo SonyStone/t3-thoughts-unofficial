@@ -2,34 +2,52 @@ import { createSignal } from "solid-js";
 
 /**
  * Hash routes, so the static build works from any folder:
- * #/, #/?q=opus, #/?q=opus&open=<post id>, #/tags, #/stats.
+ * #/, #/?q=opus, #/post/<post id>?q=opus, #/tags, #/stats.
+ * The query rides along on every page, so going back to the feed keeps the search.
  */
-export type Route = { page: "feed" | "tags" | "stats"; q: string; open?: string };
+export type Page = "feed" | "post" | "tags" | "stats";
+export type Route = { page: Page; q: string; id?: string };
 
 function read(): Route {
   const [path, search = ""] = location.hash.replace(/^#/, "").split("?");
-  const page = path === "/tags" ? "tags" : path === "/stats" ? "stats" : "feed";
   const params = new URLSearchParams(search);
-  return { page, q: params.get("q") ?? "", open: params.get("open") ?? undefined };
+  const q = params.get("q") ?? "";
+  const post = path.match(/^\/post\/([\w-]+)$/);
+  if (post) return { page: "post", q, id: post[1] };
+  // links from before entries had pages of their own: #/?open=<id>
+  const open = params.get("open");
+  if (open) return { page: "post", q, id: open };
+  return { page: path === "/tags" ? "tags" : path === "/stats" ? "stats" : "feed", q };
 }
 
 const [route, setRoute] = createSignal(read());
-window.addEventListener("hashchange", () => setRoute(read()));
+
+// where the reader was in the feed, so coming back from a post lands on the same tile
+let feedScroll: { q: string; y: number } | undefined;
+
+window.addEventListener("hashchange", () => {
+  const prev = route();
+  const next = read();
+  if (prev.page === "feed" && next.page !== "feed") feedScroll = { q: prev.q, y: window.scrollY };
+  setRoute(next);
+  // a new page starts at the top (or where the feed was left); a new query on the same page keeps the scroll
+  if (next.page === prev.page && next.id === prev.id) return;
+  const y = next.page === "feed" && feedScroll?.q === next.q ? feedScroll.y : 0;
+  requestAnimationFrame(() => window.scrollTo(0, y));
+});
 
 export { route };
 
-export function feedHref(q: string, open?: string): string {
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (open) params.set("open", open);
-  const search = params.toString();
-  return search ? `#/?${search}` : "#/";
+function withQuery(path: string, q: string): string {
+  return q ? `#${path}?${new URLSearchParams({ q })}` : `#${path}`;
 }
 
-/** While typing: update the address without a history entry per keystroke. */
-export function replaceQuery(q: string) {
-  history.replaceState(null, "", feedHref(q));
-  setRoute(read());
+export function feedHref(q: string): string {
+  return withQuery("/", q);
+}
+
+export function postHref(id: string): string {
+  return withQuery(`/post/${id}`, route().q);
 }
 
 /** A deliberate change (a tag click, a chip menu): one history entry, so Back undoes it. */
@@ -38,9 +56,5 @@ export function setQuery(q: string) {
 }
 
 export function openEntry(id: string) {
-  location.hash = feedHref(route().q, id);
-}
-
-export function closeEntry() {
-  location.hash = feedHref(route().q);
+  location.hash = postHref(id);
 }

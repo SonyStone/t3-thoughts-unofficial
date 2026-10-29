@@ -1,8 +1,8 @@
 /**
  * Derpibooru-style query syntax, parsed into a tree. Terms stay raw strings; search.ts
- * decides what a term means.
+ * decides what a term means. Tags never contain spaces, so a space is enough between them.
  *
- *   opus, -codex                 AND with a comma (or &&, AND), NOT with - (or !, NOT)
+ *   opus -codex                  AND with a space (or a comma, &&, AND), NOT with - (or !, NOT)
  *   mood:hype || mood:salty      OR with || (or OR), parentheses group
  *   person:*  "thundering herd"  wildcards, quoted phrases
  */
@@ -35,10 +35,10 @@ export function tokenize(query: string): string[] {
       i += phrase.length;
       continue;
     }
-    // a term runs to the next operator; tags may contain spaces only inside quotes
-    const word = rest.match(/^.+?(?=\s*(?:\|\||&&|,|\)|\s(?:OR|AND)\s)|$)/)![0];
-    tokens.push(word.trim());
-    i += Math.max(word.length, 1);
+    // a term runs to the next space or operator; text with spaces goes in quotes
+    const word = rest.match(/^[^\s,()|&"]+|^./)![0];
+    tokens.push(word);
+    i += word.length;
   }
   return tokens;
 }
@@ -59,10 +59,12 @@ export function parseQuery(query: string): Query | undefined {
     }
     return children.length > 1 ? { op: "or", children } : children[0];
   }
+  // two terms side by side mean AND as well, so "opus -codex" needs no comma
+  const startsAtom = (token?: string) => token !== undefined && token !== ")" && !isOr(token) && !isAnd(token);
   function and(): Query | undefined {
     const children = [not()].filter((node): node is Query => !!node);
-    while (isAnd(peek())) {
-      index++;
+    while (isAnd(peek()) || startsAtom(peek())) {
+      if (isAnd(peek())) index++;
       const next = not();
       if (next) children.push(next);
     }
@@ -91,11 +93,3 @@ export function parseQuery(query: string): Query | undefined {
 
   return or();
 }
-
-/** The term being typed at the end of the query, for autocomplete. */
-export function lastTerm(query: string): { start: number; text: string } {
-  const match = query.match(/(?:^|,|\|\||&&|\()\s*(?:-|!|NOT\s+)?([^,|&()]*)$/);
-  const text = match?.[1] ?? "";
-  return { start: query.length - text.length, text };
-}
-

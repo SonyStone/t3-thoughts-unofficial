@@ -4,6 +4,7 @@ import type { Described } from "./types";
 import { lang } from "./i18n";
 import { applyTag, hasTag } from "./clauses";
 import { feedHref, route } from "./route";
+import { endDrag, startDrag } from "./drag";
 import { openTagMenu } from "./TagMenu";
 import { namespaceOf } from "./search";
 
@@ -26,25 +27,37 @@ export function sortTags(tags: string[]): string[] {
   );
 }
 
+/** A tag's text: the namespace muted, then the name. */
+export function TagLabel(props: { tag: string }) {
+  const ns = () => namespaceOf(props.tag.replace(/^[-!]/, ""));
+  return (
+    <>
+      <Show when={ns()}>
+        <span class="tag-ns">{ns()}:</span>
+      </Show>
+      <span class="tag-name">{ns() ? props.tag.slice(props.tag.indexOf(":") + 1) : props.tag}</span>
+    </>
+  );
+}
+
 /**
- * A tag narrows the current search by itself (a click) and opens the and/or/not menu
- * (a right click), colored by namespace as on derpibooru.
+ * A tag narrows the current search by itself (a click), opens the tag menu (a right
+ * click) and can be dragged into the search box. Colored by namespace as on derpibooru.
  */
 export function Tag(props: { tag: string; count?: number }) {
-  const ns = () => namespaceOf(props.tag);
   return (
     <a
       class={{ tag: true, active: hasTag(route().q, props.tag) }}
       data-ns={namespaceKey(props.tag)}
       href={feedHref(applyTag(route().q, props.tag, "and"))}
       title={describe(vocabulary.tags[props.tag])}
+      draggable="true"
       onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => openTagMenu(event, props.tag)}
+      onDragStart={(event) => startDrag(event, { kind: "tag", tag: props.tag })}
+      onDragEnd={() => endDrag()}
     >
-      <Show when={ns()}>
-        <span class="tag-ns">{ns()}:</span>
-      </Show>
-      {ns() ? props.tag.slice(ns()!.length + 1) : props.tag}
+      <TagLabel tag={props.tag} />
       <Show when={props.count !== undefined}>
         <span class="tag-count">{props.count}</span>
       </Show>

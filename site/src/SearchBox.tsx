@@ -1,16 +1,23 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
-import { applyTag, toClauses, toQuery, type Clause, type Term } from "./clauses";
+import { applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
+import { allowDrop, dragged, endDrag, startDrag } from "./drag";
 import { t } from "./i18n";
+import { Icon } from "./icons";
 import { route, setQuery } from "./route";
 import { suggest } from "./search";
-import { namespaceKey } from "./Tag";
+import { namespaceKey, TagLabel } from "./Tag";
 import TagCloud from "./TagCloud";
 import { openTagMenu } from "./TagMenu";
 
+/** A space ends a term unless it sits inside an open quote. */
+const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
+
 /**
- * The search box: the query as chips (AND between chips, OR inside one), then a text
- * field with tag autocomplete. Enter or a comma turns the text into a chip, Backspace on
- * an empty field takes the last chip back; a chip click opens the and/or/not menu.
+ * The search box: the query as chips (AND between chips, OR inside a group), then a text
+ * field with tag autocomplete. A space or Enter turns the text into a chip, Backspace on an
+ * empty field takes the last chip back, a chip click opens the tag menu. Chips can be
+ * dragged: onto another chip to join it with OR, between chips to stand alone, onto
+ * "without" or "remove". Tags from the page can be dragged in as well.
  * `/` and ⌘K focus it from anywhere. Once it sticks to the top, focusing it shows the
  * tag cloud in a dropdown.
  */
@@ -19,6 +26,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const [draft, setDraft] = createSignal("");
   const [focused, setFocused] = createSignal(false);
   const [active, setActive] = createSignal(0);
+  const [over, setOver] = createSignal<string | undefined>();
 
   const clauses = createMemo(() => toClauses(route().q));
   const options = createMemo(() => (focused() ? suggest(draft().replace(/^[-!]/, "")) : []));
@@ -28,8 +36,8 @@ export default function SearchBox(props: { stuck: boolean }) {
     const value = text.trim().replace(/,$/, "").trim();
     if (!value) return;
     const q = route().q;
-    // a negated word goes through the menu logic (no duplicates); other text is appended as is
-    setQuery(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : q ? `${q}, ${value}` : value);
+    // a negated word goes through the menu logic (no duplicates); other text joins as its own clauses
+    setQuery(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
     setDraft("");
     setActive(0);
   };
@@ -60,11 +68,50 @@ export default function SearchBox(props: { stuck: boolean }) {
     } else if (list.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
       event.preventDefault();
       pick(list[Math.min(active(), list.length - 1)][0]);
-    } else if (event.key === "Enter" || event.key === ",") {
+    } else if (event.key === "Enter" || event.key === "," || (event.key === " " && draft().trim() && !openQuote(draft()))) {
       event.preventDefault();
       commit(draft());
     }
   };
+
+  // pasted "opus -codex": every finished word becomes a chip, the last one stays in the field
+  const onInput = (value: string) => {
+    const done = value.match(/^(.*\S)\s+(\S*)$/);
+    if (done && !openQuote(done[1])) {
+      commit(done[1]);
+      setDraft(done[2]);
+    } else {
+      setDraft(value);
+    }
+    setActive(0);
+  };
+
+  const drop = (event: DragEvent, to: Drop | "negate" | "remove") => {
+    event.preventDefault();
+    event.stopPropagation();
+    const what = dragged();
+    setOver(undefined);
+    endDrag();
+    if (!what) return;
+    const q = route().q;
+    if (what.kind === "tag") {
+      if (to === "remove") return;
+      setQuery(to === "negate" ? applyTag(q, what.tag, "exclude") : dropTag(q, what.tag, to));
+      return;
+    }
+    const at = { clause: what.clause, term: what.term };
+    setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
+  };
+
+  const target = (key: string, to: Drop | "negate" | "remove") => ({
+    onDragOver: (event: DragEvent) => {
+      allowDrop(event);
+      event.stopPropagation();
+      setOver(key);
+    },
+    onDragLeave: () => over() === key && setOver(undefined),
+    onDrop: (event: DragEvent) => drop(event, to),
+  });
 
   onSettled(() => {
     const focusShortcut = (event: KeyboardEvent) => {
@@ -79,43 +126,55 @@ export default function SearchBox(props: { stuck: boolean }) {
     return () => window.removeEventListener("keydown", focusShortcut);
   });
 
-  const TermChip = (chip: { term: Term }) => (
+  const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
       class={{ chip: true, neg: chip.term.neg }}
       data-ns={namespaceKey(chip.term.raw)}
+      draggable="true"
+      onDragStart={(event) => startDrag(event, { kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })}
+      onDragEnd={() => {
+        setOver(undefined);
+        endDrag();
+      }}
       onClick={(event) => openTagMenu(event, chip.term.raw)}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
-      {chip.term.raw}
+      <TagLabel tag={chip.term.raw} />
     </button>
   );
 
+  const Slot = (slot: { before: number }) => (
+    <span class={{ slot: true, over: over() === `slot-${slot.before}` }} {...target(`slot-${slot.before}`, { before: slot.before })} />
+  );
+
   return (
-    <div class={{ search: true, focused: focused() }}>
-      <div class="search-field" onClick={() => input?.focus()}>
-        <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true">
-          <circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2" />
-          <path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        </svg>
+    <div class={{ search: true, focused: focused(), dragging: !!dragged() }}>
+      <div
+        class={{ "search-field": true, over: over() === "field" }}
+        onClick={() => input?.focus()}
+        {...target("field", { before: clauses().length })}
+      >
+        <Icon name="search" class="search-icon" />
         <For each={clauses()}>
           {(clause: Clause, index) => (
             <>
-              <Show when={index() > 0}>
-                <span class="chip-op">and</span>
-              </Show>
+              <Slot before={index()} />
               <Show
                 when={!("raw" in clause) && clause}
                 fallback={<span class="chip raw">{(clause as { raw: string }).raw}</span>}
               >
                 {(group) => (
-                  <span class={{ "chip-group": group().terms.length > 1 }}>
+                  <span
+                    class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
+                    {...target(`join-${index()}`, { join: index() })}
+                  >
                     <For each={group().terms}>
                       {(term, termIndex) => (
                         <>
                           <Show when={termIndex() > 0}>
-                            <span class="chip-op">or</span>
+                            <span class="chip-op">{t().or}</span>
                           </Show>
-                          <TermChip term={term} />
+                          <TermChip term={term} clause={index()} index={termIndex()} />
                         </>
                       )}
                     </For>
@@ -125,6 +184,7 @@ export default function SearchBox(props: { stuck: boolean }) {
             </>
           )}
         </For>
+        <Slot before={clauses().length} />
         <input
           ref={(el) => (input = el)}
           type="text"
@@ -132,10 +192,8 @@ export default function SearchBox(props: { stuck: boolean }) {
           value={draft()}
           autocomplete="off"
           spellcheck={false}
-          onInput={(event) => {
-            setDraft(event.currentTarget.value);
-            setActive(0);
-          }}
+          aria-label={t().searchPlaceholder}
+          onInput={(event) => onInput(event.currentTarget.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => {
             setFocused(false);
@@ -143,19 +201,30 @@ export default function SearchBox(props: { stuck: boolean }) {
           }}
           onKeyDown={onKeyDown}
         />
-        <Show when={route().q}>
+        <Show when={dragged()?.kind === "chip"}>
+          <span class={{ "drop-zone": true, over: over() === "negate" }} {...target("negate", "negate")}>
+            {t().dropNegate}
+          </span>
+          <span class={{ "drop-zone": true, remove: true, over: over() === "remove" }} {...target("remove", "remove")}>
+            {t().dropRemove}
+          </span>
+        </Show>
+        <Show when={route().q && !dragged()}>
           <button
             class="search-clear"
-            aria-label="×"
+            aria-label={t().clear}
+            title={t().clear}
             onClick={(event) => {
               event.stopPropagation();
               setQuery("");
             }}
           >
-            ×
+            <Icon name="close" />
           </button>
         </Show>
-        <kbd class="search-kbd">⌘K</kbd>
+        <Show when={!route().q && !dragged()}>
+          <kbd class="search-kbd">⌘K</kbd>
+        </Show>
       </div>
 
       <Show when={options().length > 0 || showCloud()}>
