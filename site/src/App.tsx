@@ -16,23 +16,17 @@ import { EntryMeta, List, Tiles } from "./Tiles";
 import { Chapters, VideoCard } from "./Video";
 import { XThread } from "./XPost";
 import Counts from "./Counts";
-import loopWebmWide from "../../assets/header/loop-grok-1920.webm?url";
-import loopMp4Wide from "../../assets/header/loop-grok-1920.mp4?url";
-import loopWebm from "../../assets/header/loop-grok-1440.webm?url";
-import loopMp4 from "../../assets/header/loop-grok-1440.mp4?url";
+import loopWebm from "../../assets/header/loop-grok-1280.webm?url";
+import loopMp4 from "../../assets/header/loop-grok-1280.mp4?url";
 import loopWebmMobile from "../../assets/header/loop-grok-960.webm?url";
 import loopMp4Mobile from "../../assets/header/loop-grok-960.mp4?url";
-import posterWebpWide from "../../assets/header/poster-1920.webp?url";
-import posterJpgWide from "../../assets/header/poster-1920.jpg?url";
-import posterWebp from "../../assets/header/poster-1440.webp?url";
-import posterJpg from "../../assets/header/poster-1440.jpg?url";
+import posterWebp from "../../assets/header/poster-1280.webp?url";
+import posterJpg from "../../assets/header/poster-1280.jpg?url";
 import posterWebpMobile from "../../assets/header/poster-960.webp?url";
 import posterJpgMobile from "../../assets/header/poster-960.jpg?url";
 
 /** Same breakpoint as the phone header in styles.css. */
 const MOBILE = "(max-width: 700px)";
-/** Past 1440 px the video is drawn wider than the 1440 loop: the 1920 one fills a 1920 window. */
-const WIDE = "(min-width: 1441px)";
 
 const LANG_NAMES: Record<Lang, string> = { en: "English", ru: "Русский" };
 
@@ -302,16 +296,12 @@ function Hero() {
         <picture>
           <source media={MOBILE} srcset={posterWebpMobile} type="image/webp" />
           <source media={MOBILE} srcset={posterJpgMobile} />
-          <source media={WIDE} srcset={posterWebpWide} type="image/webp" />
-          <source media={WIDE} srcset={posterJpgWide} />
           <source srcset={posterWebp} type="image/webp" />
           <img class="hero-media" src={posterJpg} alt="" fetchpriority="high" />
         </picture>
         <video class="hero-media" autoplay muted loop playsinline>
           <source media={MOBILE} src={loopWebmMobile} type="video/webm" />
           <source media={MOBILE} src={loopMp4Mobile} type="video/mp4" />
-          <source media={WIDE} src={loopWebmWide} type="video/webm" />
-          <source media={WIDE} src={loopMp4Wide} type="video/mp4" />
           <source src={loopWebm} type="video/webm" />
           <source src={loopMp4} type="video/mp4" />
         </video>
