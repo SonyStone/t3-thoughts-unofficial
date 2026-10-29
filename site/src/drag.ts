@@ -42,9 +42,10 @@ function getProxy(): HTMLDivElement {
   return proxy;
 }
 
+/** A drop place under the pointer wins, even one hanging out of the box (the "or" tabs); then off the box. */
 function keyAt(x: number, y: number): string | undefined {
-  if (outsideTest?.(x, y)) return "outside";
-  return (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
+  const place = (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
+  return place ?? (outsideTest?.(x, y) ? "outside" : undefined);
 }
 
 // the click that ends a drag is not a click
@@ -98,6 +99,7 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
           // capture is a nicety; window listeners carry on without it
         }
         target = next;
+        next.addEventListener("lostpointercapture", lost);
         setDragged(what());
       };
 
@@ -110,11 +112,13 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
         setOver(keyAt(e.clientX, e.clientY));
       };
 
-      const finish = (e: PointerEvent | KeyboardEvent, drop: boolean) => {
+      const finish = (e: Event, drop: boolean) => {
         window.removeEventListener("pointermove", move, true);
         window.removeEventListener("pointerup", up, true);
         window.removeEventListener("pointercancel", cancel, true);
         window.removeEventListener("keydown", escape, true);
+        window.removeEventListener("blur", lost);
+        target.removeEventListener("lostpointercapture", lost);
         try {
           target.releasePointerCapture(pointer);
         } catch {
@@ -122,10 +126,13 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
         }
         const what = dragged();
         ghost?.remove();
-        // the handler still sees the drag as it was, then it ends
-        if (what && drop && "clientX" in e) handler?.(what, keyAt(e.clientX, e.clientY), e.clientX, e.clientY);
-        setOver(undefined);
-        setDragged(undefined);
+        try {
+          // the handler still sees the drag as it was, then it ends, whatever the handler does
+          if (what && drop && e instanceof PointerEvent) handler?.(what, keyAt(e.clientX, e.clientY), e.clientX, e.clientY);
+        } finally {
+          setOver(undefined);
+          setDragged(undefined);
+        }
         if (!what) return;
         swallowClick = true;
         setTimeout(() => (swallowClick = false), 0);
@@ -133,11 +140,14 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
       const up = (e: PointerEvent) => e.pointerId === pointer && finish(e, true);
       const cancel = (e: PointerEvent) => e.pointerId === pointer && finish(e, false);
       const escape = (e: KeyboardEvent) => e.key === "Escape" && dragged() && finish(e, false);
+      // the window lost focus or the pointer (a screenshot tool, an alert): the drag ends, nothing drops
+      const lost = (e: Event) => dragged() && finish(e, false);
 
       window.addEventListener("pointermove", move, true);
       window.addEventListener("pointerup", up, true);
       window.addEventListener("pointercancel", cancel, true);
       window.addEventListener("keydown", escape, true);
+      window.addEventListener("blur", lost);
     },
   };
 }
