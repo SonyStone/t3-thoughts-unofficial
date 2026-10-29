@@ -26,6 +26,11 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
  */
 export default function SearchBox(props: { stuck: boolean }) {
   let input: HTMLInputElement | undefined;
+  let root: HTMLDivElement | undefined;
+  const outside = (x: number, y: number) => {
+    const box = root?.getBoundingClientRect();
+    return !box || x < box.left || x > box.right || y < box.top || y > box.bottom;
+  };
   const [draft, setDraft] = createSignal("");
   const [focused, setFocused] = createSignal(false);
   const [active, setActive] = createSignal(0);
@@ -125,6 +130,15 @@ export default function SearchBox(props: { stuck: boolean }) {
     else setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
   };
 
+  /** Whether the thing being dragged already is this clause, so joining it with itself means nothing. */
+  const carries = (index: number) => {
+    const what = dragged();
+    const clause = clauses()[index];
+    if (!what || !clause || "raw" in clause) return false;
+    if (what.kind === "chip") return what.clause === index && clause.terms.length === 1;
+    return clause.terms.some((term) => term.raw.toLowerCase() === what.tag.toLowerCase());
+  };
+
   // every drop place by its key, so a finger drag can find what is under it (data-drop)
   const targets = new Map<string, Target>();
   const target = (key: string, to: Target) => (targets.set(key, to), {
@@ -148,7 +162,25 @@ export default function SearchBox(props: { stuck: boolean }) {
       input?.focus();
     };
     window.addEventListener("keydown", focusShortcut);
-    return () => window.removeEventListener("keydown", focusShortcut);
+
+    // a chip carried out of the search box and let go there is taken out of the query
+    const overPage = (event: DragEvent) => {
+      if (dragged()?.kind !== "chip" || !outside(event.clientX, event.clientY)) return;
+      event.preventDefault();
+      setOver("outside");
+    };
+    const dropOnPage = (event: DragEvent) => {
+      if (dragged()?.kind !== "chip" || !outside(event.clientX, event.clientY)) return;
+      event.preventDefault();
+      place("remove");
+    };
+    window.addEventListener("dragover", overPage);
+    window.addEventListener("drop", dropOnPage);
+    return () => {
+      window.removeEventListener("keydown", focusShortcut);
+      window.removeEventListener("dragover", overPage);
+      window.removeEventListener("drop", dropOnPage);
+    };
   });
 
   /**
@@ -185,16 +217,18 @@ export default function SearchBox(props: { stuck: boolean }) {
           el.classList.add("lifted");
         }
         el.style.transform = `translate(${dx}px, ${dy}px)`;
-        setOver(keyAt(event.clientX, event.clientY));
+        setOver(outside(event.clientX, event.clientY) ? "outside" : keyAt(event.clientX, event.clientY));
       },
       onPointerUp: (event: PointerEvent) => {
         if (!el || event.pointerType === "mouse") return;
         const key = moved ? keyAt(event.clientX, event.clientY) : undefined;
+        const thrownOut = moved && outside(event.clientX, event.clientY);
         el.style.transform = "";
         el.classList.remove("lifted");
         el = undefined;
         setOver(undefined);
-        if (key && targets.has(key)) place(targets.get(key)!);
+        if (thrownOut) place("remove");
+        else if (key && targets.has(key)) place(targets.get(key)!);
         else endDrag();
       },
       onPointerCancel: () => {
@@ -234,12 +268,9 @@ export default function SearchBox(props: { stuck: boolean }) {
     </button>
   );
 
-  const Slot = (slot: { before: number }) => (
-    <span class={{ slot: true, over: over() === `slot-${slot.before}` }} {...target(`slot-${slot.before}`, { before: slot.before })} />
-  );
 
   return (
-    <div class={{ search: true, focused: focused(), dragging: !!dragged() }}>
+    <div class={{ search: true, focused: focused(), dragging: !!dragged() }} ref={(el) => (root = el)}>
       <div
         class={{ "search-field": true, over: over() === "field" }}
         onClick={() => input?.focus()}
@@ -249,7 +280,6 @@ export default function SearchBox(props: { stuck: boolean }) {
         <For each={clauses()}>
           {(clause: Clause, index) => (
             <>
-              <Slot before={index()} />
               <Show
                 when={!("raw" in clause) && clause}
                 fallback={<span class="chip raw">{(clause as { raw: string }).raw}</span>}
@@ -257,7 +287,6 @@ export default function SearchBox(props: { stuck: boolean }) {
                 {(group) => (
                   <span
                     class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
-                    {...target(`join-${index()}`, { join: index() })}
                   >
                     <For each={group().terms}>
                       {(term, termIndex) => (
@@ -269,9 +298,14 @@ export default function SearchBox(props: { stuck: boolean }) {
                         </>
                       )}
                     </For>
-                    {/* dropped here, the tag joins this chip with "or" */}
-                    <Show when={dragged()}>
-                      <span class="or-pocket">{t().or}</span>
+                    {/* above a chip: add next to it ("and"); below it: join it ("or"). Not on the chip being carried. */}
+                    <Show when={dragged() && !carries(index())}>
+                      <span class={{ flyout: true, and: true, over: over() === `after-${index()}` }} {...target(`after-${index()}`, { before: index() + 1 })}>
+                        {t().drop.and}
+                      </span>
+                      <span class={{ flyout: true, or: true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
+                        {t().drop.or}
+                      </span>
                     </Show>
                   </span>
                 )}
@@ -279,7 +313,6 @@ export default function SearchBox(props: { stuck: boolean }) {
             </>
           )}
         </For>
-        <Slot before={clauses().length} />
         <input
           ref={(el) => (input = el)}
           type="text"
@@ -309,9 +342,7 @@ export default function SearchBox(props: { stuck: boolean }) {
               <b>=</b> {t().drop.only}
             </span>
             <Show when={dragged()?.kind === "chip"}>
-              <span class={{ "drop-zone": true, remove: true, over: over() === "remove" }} {...target("remove", "remove")}>
-                <b>×</b> {t().drop.remove}
-              </span>
+              <span class={{ "drop-hint": true, out: over() === "outside" }}>{over() === "outside" ? t().drop.release : t().drop.out}</span>
             </Show>
           </span>
         </Show>

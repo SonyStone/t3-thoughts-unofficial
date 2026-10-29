@@ -47,7 +47,7 @@ const en = {
   or: "or",
   clear: "Clear search",
   searchText: "search the text",
-  drop: { add: "Add (and)", negate: "Without", only: "Only this", remove: "Remove" },
+  drop: { add: "Add (and)", negate: "Without", only: "Only this", and: "and", or: "or", out: "drag out to remove", release: "release to remove" },
   tagMenu: {
     only: "Only this tag",
     and: "Narrow: and",
@@ -188,7 +188,7 @@ const ru: Dict = {
   or: "или",
   clear: "Очистить поиск",
   searchText: "искать в тексте",
-  drop: { add: "Добавить (и)", negate: "Без", only: "Только это", remove: "Убрать" },
+  drop: { add: "Добавить (и)", negate: "Без", only: "Только это", and: "и", or: "или", out: "вынеси, чтобы убрать", release: "отпусти, чтобы убрать" },
   tagMenu: {
     only: "Только этот тег",
     and: "Сузить: и",

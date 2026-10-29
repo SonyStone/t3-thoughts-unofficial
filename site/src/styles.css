@@ -123,8 +123,10 @@ a {
 }
 
 .head-search .search-field {
+  --pad-y: 4px;
+  --pad-r: 6px;
   min-height: 48px;
-  padding: 4px 6px 4px 16px;
+  padding: var(--pad-y) var(--pad-r) var(--pad-y) 16px;
   border-radius: 12px;
   box-shadow: none;
 }
@@ -377,8 +379,10 @@ main.on-hero {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  --pad-y: 10px;
+  --pad-r: 12px;
   min-height: 70px;
-  padding: 10px 12px 10px 22px;
+  padding: var(--pad-y) var(--pad-r) var(--pad-y) 22px;
   border: 1px solid var(--line-strong);
   border-radius: 16px;
   background: rgba(23, 20, 28, 0.94);
@@ -536,6 +540,7 @@ main.on-hero {
 }
 
 .clause {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -553,33 +558,12 @@ main.on-hero {
   font-size: 0.75rem;
 }
 
-/* drop places, only there while something is dragged */
-.slot {
-  align-self: stretch;
-  width: 0;
-  margin: 0 -4px;
-  border-radius: 6px;
-  transition: width 0.12s;
-}
-
-.search.dragging .slot {
-  width: 16px;
-  margin: 0;
-  border: 1px dashed var(--line-strong);
-}
-
-.search.dragging .slot.over {
-  width: 44px;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-/* the free part of the search box while dragging: one big zone per action */
+/* the free part of the search box while dragging: zones side by side, the box's full height */
 .drop-board {
   display: flex;
   flex: 1 1 420px;
-  gap: 8px;
   align-self: stretch;
+  margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) 8px;
 }
 
 .search.dragging .search-field input,
@@ -587,19 +571,25 @@ main.on-hero {
   display: none;
 }
 
-.drop-zone {
+.drop-zone,
+.drop-hint {
   display: flex;
-  flex: 1;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 46px;
-  padding: 6px 12px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 10px;
+  padding: 0 14px;
+  border-left: 1px dashed var(--line-strong);
   color: var(--text-2);
   font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.drop-zone {
+  flex: 1;
+}
+
+.drop-board > :last-child {
+  border-radius: 0 15px 15px 0;
 }
 
 .drop-zone b {
@@ -608,34 +598,59 @@ main.on-hero {
 }
 
 .drop-zone.over {
-  border-style: solid;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--text);
 }
 
-.drop-zone.negate.over,
-.drop-zone.remove.over {
-  border-color: #e66767;
-  background: color-mix(in srgb, #e66767 14%, transparent);
+.drop-zone.negate.over {
+  background: color-mix(in srgb, #e66767 16%, transparent);
 }
 
-/* a pocket after each chip while dragging: drop here to join with "or" */
-.or-pocket {
-  display: grid;
-  place-items: center;
-  min-width: 40px;
-  align-self: stretch;
-  border: 1px dashed var(--line-strong);
-  border-radius: 8px;
+.drop-hint {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.75rem;
 }
 
-.clause.over .or-pocket {
+/* carried out of the box: the chip goes when let go */
+.drop-hint.out {
+  color: #e66767;
+}
+
+.search:has(.drop-hint.out) .search-field {
+  border-color: #e66767;
+}
+
+/* above and below each chip while dragging: "and" next to it, "or" with it */
+.flyout {
+  position: absolute;
+  left: 50%;
+  z-index: 6;
+  display: grid;
+  place-items: center;
+  min-width: max(100%, 96px);
+  height: 42px;
+  transform: translateX(-50%);
+  border: 1px dashed var(--muted);
+  border-radius: 10px;
+  background: rgba(23, 20, 28, 0.96);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.flyout.and {
+  bottom: calc(100% + var(--pad-y) + 8px);
+}
+
+.flyout.or {
+  top: calc(100% + var(--pad-y) + 8px);
+}
+
+.flyout.over {
   border-style: solid;
   border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
   color: var(--text);
 }
 
@@ -2431,8 +2446,10 @@ footer {
 
   .search-field,
   .bar.stuck .search-field {
+    --pad-y: 6px;
+    --pad-r: 6px;
     min-height: 56px;
-    padding: 6px 6px 6px 14px;
+    padding: var(--pad-y) var(--pad-r) var(--pad-y) 14px;
     border-radius: 14px;
   }
 
@@ -2459,12 +2476,29 @@ footer {
     gap: 6px;
   }
 
+  /* phone: the board takes a row of its own under the chips, still edge to edge */
   .drop-board {
-    flex-wrap: wrap;
+    flex-basis: 100%;
+    min-height: 48px;
+    margin: 4px calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) -14px;
+    border-top: 1px dashed var(--line-strong);
+  }
+
+  .drop-board > :first-child {
+    border-left: 0;
+  }
+
+  .drop-board > :last-child {
+    border-radius: 0 0 13px 0;
   }
 
   .drop-zone {
-    flex: 1 1 40%;
+    padding: 0 8px;
+    font-size: 0.8rem;
+  }
+
+  .drop-hint {
+    display: none;
   }
 
   .hero-cloud .cloud:not(.expanded) .cloud-tags {
