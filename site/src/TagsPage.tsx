@@ -84,7 +84,7 @@ export default function TagsPage() {
                     {t().namespaces[group.ns]}
                     <span class="tag-count">{group.tags.length}</span>
                   </h2>
-                  <Show when={describe(vocabulary.namespaces[group.ns])}>{(about) => <p class="muted small group-about">{about()}</p>}</Show>
+                  <Show when={describe(vocabulary.namespaces[group.ns]) ?? t().tagsPage.about[group.ns]}>{(about) => <p class="muted small group-about">{about()}</p>}</Show>
                   <Show
                     when={group.tags.some(([tag]) => describe(vocabulary.tags[tag]))}
                     fallback={
@@ -98,7 +98,7 @@ export default function TagsPage() {
                         {([tag, count]) => (
                           <li>
                             <Tag tag={tag} />
-                            <span class="tag-about">{describe(vocabulary.tags[tag]) ?? ""}</span>
+                            <span class={{ "tag-about": true, none: !describe(vocabulary.tags[tag]) }}>{describe(vocabulary.tags[tag]) ?? "—"}</span>
                             <span class="tag-freq-count">{count}</span>
                           </li>
                         )}

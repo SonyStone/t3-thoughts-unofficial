@@ -274,6 +274,12 @@ function TopNav() {
         </a>
       </nav>
       <LangMenu />
+      {/* without the video there is nothing for the search to sit on, so it joins the header */}
+      <Show when={!feed()}>
+        <div class="head-search">
+          <SearchBox stuck />
+        </div>
+      </Show>
     </header>
   );
 }
@@ -334,10 +340,10 @@ export default function App() {
       </Show>
 
       <main class={{ "on-hero": route().page === "feed" }}>
-        <div class={{ bar: true, stuck: stuck() }} ref={(el) => (bar = el)}>
-          <SearchBox stuck={stuck()} />
-        </div>
         <Show when={route().page === "feed"}>
+          <div class={{ bar: true, stuck: stuck() }} ref={(el) => (bar = el)}>
+            <SearchBox stuck={stuck()} />
+          </div>
           <div class="hero-cloud">
             <TagCloud short />
           </div>

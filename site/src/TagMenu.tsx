@@ -20,7 +20,12 @@ const WIDTH = 340;
 export function openTagMenu(event: MouseEvent, tag: string) {
   event.preventDefault();
   event.stopPropagation();
-  const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+  openAt(event.currentTarget as HTMLElement | null, tag, event.clientX, event.clientY);
+}
+
+function openAt(el: HTMLElement | null, tag: string, clientX: number, clientY: number) {
+  const rect = el?.getBoundingClientRect();
+  const event = { clientX, clientY };
   setPlacement(undefined);
   setMenu({
     tag,
@@ -28,6 +33,44 @@ export function openTagMenu(event: MouseEvent, tag: string) {
     above: rect?.top ?? event.clientY,
     below: rect?.bottom ?? event.clientY,
   });
+}
+
+const LONG_PRESS_MS = 500;
+let pressed = false;
+
+/**
+ * A long press with a finger opens the same menu: phones have no right click, and their own
+ * long-press menu for links would show a link preview instead. The click that ends the press
+ * is swallowed, so the tag does not also search.
+ */
+export function longPress(tag: () => string) {
+  let timer: number | undefined;
+  let start = { x: 0, y: 0 };
+  const cancel = () => window.clearTimeout(timer);
+  return {
+    onPointerDown: (event: PointerEvent) => {
+      if (event.pointerType === "mouse") return;
+      const el = event.currentTarget as HTMLElement;
+      start = { x: event.clientX, y: event.clientY };
+      cancel();
+      timer = window.setTimeout(() => {
+        pressed = true;
+        openAt(el, tag(), start.x, start.y);
+      }, LONG_PRESS_MS);
+    },
+    onPointerMove: (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) cancel();
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onClick: (event: MouseEvent) => {
+      if (!pressed) return false;
+      pressed = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    },
+  };
 }
 
 const ACTIONS: TagAction[] = ["and", "or", "exclude", "only", "remove"];

@@ -111,6 +111,8 @@ const en = {
     order: "Order",
     orders: { count: "Most used", name: "A–Z" },
     shown: (count: number) => plural("en", count, { one: "# tag", other: "# tags" }),
+    // groups tags.yaml has no namespace for
+    about: { sponsor: "Sponsors of his videos, from the sponsor reads", topic: "Everything else: subjects without a namespace" } as Record<string, string>,
     help: "Click a tag to search by it; right-click (long-press on a phone) for more. In search a space means “and”, || means “or”, a minus means “without”, * matches any ending:",
   },
   namespaces: {
@@ -130,7 +132,7 @@ const en = {
     posts: (count: number) => plural("en", count, { one: "# post", other: "# posts" }),
     onSite: "What made it to the site",
     entries: "entries in the feed",
-    threads: (count: number) => plural("en", count, { one: "a thread of several posts counts once", other: "# threads of several posts count once each" }),
+    threads: (count: number) => plural("en", count, { one: "a thread counts once", other: "# threads count once each" }),
     kindsPlural: { video: "videos", post: "posts", reply: "replies", quote: "quotes", repost: "reposts" },
     shitpost: "Shitpost index",
     seen: "posts looked at",
@@ -244,6 +246,7 @@ const ru: Dict = {
     order: "Порядок",
     orders: { count: "Частые", name: "А–Я" },
     shown: (count: number) => plural("ru", count, { one: "# тег", few: "# тега", many: "# тегов", other: "# тега" }),
+    about: { sponsor: "Спонсоры его видео, по рекламным вставкам", topic: "Всё остальное: темы без пространства имён" },
     help: "Клик по тегу ищет по нему, правый клик (долгое нажатие на телефоне) открывает меню. В поиске пробел — «и», || — «или», минус — «без», * — любой хвост:",
   },
   namespaces: {
@@ -263,7 +266,7 @@ const ru: Dict = {
     posts: (count: number) => plural("ru", count, { one: "# пост", few: "# поста", many: "# постов", other: "# поста" }),
     onSite: "Что попало на сайт",
     entries: "записей в ленте",
-    threads: (count: number) => plural("ru", count, { one: "ветка из нескольких постов — одна запись", few: "# ветки по нескольку постов — по одной записи", many: "# веток по нескольку постов — по одной записи", other: "# ветки по нескольку постов — по одной записи" }),
+    threads: (count: number) => plural("ru", count, { one: "ветка считается одной", few: "# ветки — по одной записи", many: "# веток — по одной записи", other: "# ветки — по одной записи" }),
     kindsPlural: { video: "видео", post: "постов", reply: "ответов", quote: "цитат", repost: "репостов" },
     shitpost: "Шитпост-индекс",
     seen: "просмотрено постов",

@@ -154,7 +154,7 @@ async function share(url: string) {
 }
 
 /** The action bar: counts as X shows them; the moment they were taken is in the tooltip. */
-function XActions(props: { metrics?: Metrics; url?: string }) {
+function XActions(props: { metrics?: Metrics; url?: string; focused?: boolean }) {
   const id = () => props.url?.match(STATUS_ID)?.[1];
   const asOf = () =>
     props.metrics ? t().metrics.asOf(formatDate(new Date(props.metrics.capturedAt), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : undefined;
@@ -163,7 +163,9 @@ function XActions(props: { metrics?: Metrics; url?: string }) {
     <div class="x-actions" title={asOf()}>
       <For each={ACTIONS}>
         {([icon, key, href]) => {
-          const value = () => (key && props.metrics ? (props.metrics[key] as number | undefined) : undefined);
+          // a focused post has its views in the line above, as on X
+          const value = () =>
+            key && props.metrics && !(props.focused && key === "views") ? (props.metrics[key] as number | undefined) : undefined;
           return (
             <a class="x-action" data-action={icon} href={id() ? href(id()!) : props.url} target="_blank" rel="noreferrer" aria-label={icon} onClick={stop}>
               <Icon name={icon} />
@@ -267,8 +269,9 @@ function XStep(props: {
             </div>
           )}
         </Show>
-        <Show when={!props.context}>
-          <XActions metrics={props.metrics} url={props.href} />
+        {/* no numbers, no bar: a row of bare icons says nothing */}
+        <Show when={!props.context && props.metrics}>
+          <XActions metrics={props.metrics} url={props.href} focused={props.focused} />
         </Show>
       </div>
     </article>
