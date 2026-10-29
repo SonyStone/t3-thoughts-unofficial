@@ -1,8 +1,8 @@
 import { Show } from "solid-js";
 import { vocabulary } from "virtual:content";
 import type { Described } from "./types";
-import { lang } from "./i18n";
-import { applyTag, excludesTag, hasTag } from "./clauses";
+import { lang, t } from "./i18n";
+import { applyTag, excludesTag, mentions } from "./clauses";
 import { feedHref, route } from "./route";
 import { endDrag, startDrag } from "./drag";
 import { longPress, openTagMenu } from "./TagMenu";
@@ -44,14 +44,14 @@ export function TagLabel(props: { tag: string }) {
  * A tag narrows the current search by itself (a click; a second click takes it out again),
  * opens the tag menu (a right click) and can be dragged into the search box. Colored by namespace as on derpibooru.
  */
-export function Tag(props: { tag: string; count?: number }) {
+export function Tag(props: { tag: string; count?: number; implied?: boolean }) {
   const press = longPress(() => props.tag);
   return (
     <a
-      class={{ tag: true, active: hasTag(route().q, props.tag), excluded: excludesTag(route().q, props.tag) }}
+      class={{ tag: true, active: mentions(route().q, props.tag), excluded: excludesTag(route().q, props.tag), implied: !!props.implied }}
       data-ns={namespaceKey(props.tag)}
-      href={feedHref(applyTag(route().q, props.tag, hasTag(route().q, props.tag) || excludesTag(route().q, props.tag) ? "remove" : "and"))}
-      title={describe(vocabulary.tags[props.tag])}
+      href={feedHref(applyTag(route().q, props.tag, mentions(route().q, props.tag) || excludesTag(route().q, props.tag) ? "remove" : "and"))}
+      title={props.implied ? t().impliedTag : describe(vocabulary.tags[props.tag])}
       draggable="true"
       onClick={(event) => press.onClick(event) || event.stopPropagation()}
       onContextMenu={(event) => openTagMenu(event, props.tag)}

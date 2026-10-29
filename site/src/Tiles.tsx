@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { localized, type Entry, type Item } from "./content";
 import { formatDate, lang, t } from "./i18n";
+import { mentions } from "./clauses";
 import { openEntry, postHref, route } from "./route";
 import { chapterMatcher } from "./search";
 import { sortTags, Tag } from "./Tag";
@@ -74,6 +75,16 @@ function Title(props: { entry: Entry }) {
   );
 }
 
+/**
+ * Tags the search found the entry by but the card would not show: implied ones (model:claude
+ * brings company:anthropic). Shown first and dashed, so a match never looks unexplained.
+ */
+function impliedMatches(entry: Entry): string[] {
+  const own = new Set(entry.items.flatMap((each) => each.ownTags));
+  const all = new Set(entry.items.flatMap((each) => each.tags));
+  return [...all].filter((tag) => !own.has(tag) && mentions(route().q, tag));
+}
+
 function TileTags(props: { entry: Entry }) {
   const tags = () =>
     sortTags([...new Set(props.entry.items.flatMap((each) => each.ownTags))])
@@ -81,6 +92,7 @@ function TileTags(props: { entry: Entry }) {
       .slice(0, TAGS_ON_TILE);
   return (
     <div class="tags">
+      <For each={impliedMatches(props.entry)}>{(tag) => <Tag tag={tag} implied />}</For>
       <For each={tags()}>{(tag) => <Tag tag={tag} />}</For>
     </div>
   );

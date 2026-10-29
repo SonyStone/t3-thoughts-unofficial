@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
-import { applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
+import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
 import { allowDrop, beginDrag, dragged, endDrag, startDrag } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
@@ -10,7 +10,7 @@ import TagCloud from "./TagCloud";
 import { openTagMenu } from "./TagMenu";
 
 /** Where a dragged tag or chip can land: a place among the chips, or one of the big zones. */
-type Target = Drop | "negate" | "remove" | "only";
+type Target = Drop | "negate" | "remove" | "only" | { andWith: { clause: number; term: number } };
 
 /** A space ends a term unless it sits inside an open quote. */
 const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
@@ -161,6 +161,11 @@ export default function SearchBox(props: { stuck: boolean }) {
     if (!what) return;
     const q = currentQuery();
     // a tag from the page that is already in the search moves that chip, like a chip would
+    if (typeof to === "object" && "andWith" in to) {
+      if (what.kind === "tag" && !at) setQuery(andWith(q, to.andWith, { raw: what.tag, neg: false }));
+      else if (at) setQuery(andWith(q, to.andWith, (clauses()[at.clause] as { terms: Term[] }).terms[at.term], at));
+      return;
+    }
     if (what.kind === "tag" && !at) {
       if (to === "remove") return;
       if (to === "only") setQuery(what.tag);
@@ -317,7 +322,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
       {...fingerDrag(chip)}
-      class={{ chip: true, neg: chip.term.neg, carried: isCarried(chip.clause, chip.index) }}
+      class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
       draggable="true"
       onDragStart={(event) => startDrag(event, { kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })}
@@ -335,13 +340,33 @@ export default function SearchBox(props: { stuck: boolean }) {
       }}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
-      <TagLabel tag={chip.term.raw} />
+      {/* an AND inside an OR: its parts in brackets, carried as one */}
+      <Show when={chip.term.all} fallback={<TagLabel tag={chip.term.raw} />}>
+        {(all) => (
+          <span class="and-group">
+            <span class="bracket">(</span>
+            <For each={all()}>
+              {(part, k) => (
+                <>
+                  <Show when={k() > 0}>
+                    <span class="chip-op">{t().and}</span>
+                  </Show>
+                  <span class={{ part: true, neg: part.neg }} data-ns={namespaceKey(part.raw)}>
+                    <TagLabel tag={part.raw} />
+                  </span>
+                </>
+              )}
+            </For>
+            <span class="bracket">)</span>
+          </span>
+        )}
+      </Show>
     </button>
   );
 
 
   return (
-    <div class={{ search: true, focused: focused(), dragging: !!dragged() }} ref={(el) => (root = el)}>
+    <div class={{ search: true, focused: focused(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
       <div
         class={{ "search-field": true, over: over() === "field" }}
         onClick={(event) => {
@@ -376,6 +401,15 @@ export default function SearchBox(props: { stuck: boolean }) {
                             <span class="chip-op">{t().or}</span>
                           </Show>
                           <TermChip term={term} clause={index()} index={termIndex()} />
+                          {/* inside an "or" group, a slot beside each alternative: dropped there, the tag joins it with "and" */}
+                          <Show when={dragged() && group().terms.length > 1 && !isCarried(index(), termIndex())}>
+                            <span
+                              class={{ "and-slot": true, over: over() === `and-${index()}-${termIndex()}` }}
+                              {...target(`and-${index()}-${termIndex()}`, { andWith: { clause: index(), term: termIndex() } })}
+                            >
+                              {t().and}
+                            </span>
+                          </Show>
                         </>
                       )}
                     </For>
@@ -392,7 +426,7 @@ export default function SearchBox(props: { stuck: boolean }) {
           )}
         </For>
         <input
-          style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `${Math.max(2, draft().length + 1)}ch` : undefined }}
+          style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `max(2px, ${draft().length + 0.3}ch)` : undefined }}
           class={{ inside: caretAt() < clauses().length }}
           ref={(el) => (input = el)}
           type="text"
@@ -425,9 +459,6 @@ export default function SearchBox(props: { stuck: boolean }) {
               <span class={{ "drop-zone": true, over: over() === "only" }} {...target("only", "only")}>
                 <b>=</b> {t().drop.only}
               </span>
-            </Show>
-            <Show when={carried()}>
-              <span class={{ "drop-hint": true, out: over() === "outside" }}>{over() === "outside" ? t().drop.release : t().drop.out}</span>
             </Show>
           </span>
         </Show>

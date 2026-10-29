@@ -587,8 +587,7 @@ main.on-hero {
   display: none;
 }
 
-.drop-zone,
-.drop-hint {
+.drop-zone {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -627,18 +626,8 @@ main.on-hero {
   background: color-mix(in srgb, #e66767 16%, transparent);
 }
 
-.drop-hint {
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-
-/* carried out of the box: the chip goes when let go */
-.drop-hint.out {
-  color: #e66767;
-}
-
-.search:has(.drop-hint.out) .search-field {
+/* a chip carried out of the box goes when let go: the box turns red to say so */
+.search.outside .search-field {
   border-color: #e66767;
 }
 
@@ -678,6 +667,67 @@ main.on-hero {
 
 .clause:has(.or-tab.over) .chip {
   border-color: var(--accent);
+}
+
+/* an AND inside an OR: one chip with its parts in brackets */
+.chip.compound {
+  gap: 5px;
+  padding: 3px 6px;
+}
+
+.chip.compound::before {
+  display: none;
+}
+
+.and-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.and-group .bracket {
+  color: var(--muted);
+}
+
+.and-group .part {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.and-group .part::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--ns, var(--line-strong));
+}
+
+.and-group .part .tag-ns {
+  margin-right: -5px;
+}
+
+/* beside each alternative of an "or" group while dragging: drop here for "and" */
+.and-slot {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  min-width: 56px;
+  border: 1px dashed var(--muted);
+  border-radius: 8px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+}
+
+.and-slot.over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  color: var(--text);
 }
 
 /* the chip being carried leaves the box until it is dropped. Not display: none: Chrome
@@ -890,6 +940,11 @@ main.on-hero {
 
 .tag.active {
   border-color: var(--accent);
+}
+
+/* a tag the entry has only by implication, shown because the search matched it */
+.tag.implied {
+  border-style: dashed;
 }
 
 /* a tag the search excludes: struck out wherever it shows */
@@ -2540,9 +2595,6 @@ footer {
     font-size: 0.8rem;
   }
 
-  .drop-hint {
-    display: none;
-  }
 
   .hero-cloud .cloud:not(.expanded) .cloud-tags {
     mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);

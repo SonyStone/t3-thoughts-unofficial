@@ -8,16 +8,28 @@ import { parseQuery, type Query } from "./query.ts";
  *   product:t3-code (mood:hype || mood:salty) -kind:repost
  *   → [[product:t3-code], [mood:hype, mood:salty], [-kind:repost]]
  *
- * A clause too nested for chips (parentheses inside OR) is kept as one raw chip.
+ * Inside an OR, one alternative may itself be an AND of plain terms, drawn in brackets:
+ *   ui || (company:anthropic model:claude)  → [[ui, (company:anthropic and model:claude)]]
+ * Anything more nested is kept as one raw chip.
  */
-export type Term = { raw: string; neg: boolean };
+export type Term = { raw: string; neg: boolean; all?: Term[] };
 export type Clause = { terms: Term[] } | { raw: string };
 
-function term(query: Query): Term | undefined {
+function plain(query: Query): Term | undefined {
   if (query.op === "term") return { raw: query.raw, neg: false };
   if (query.op === "not" && query.child.op === "term") return { raw: query.child.raw, neg: true };
   return undefined;
 }
+
+/** A plain term, or an AND of plain terms (only as one alternative of an OR). */
+function term(query: Query, inOr = false): Term | undefined {
+  const single = plain(query);
+  if (single || !inOr || query.op !== "and") return single;
+  const all = query.children.map(plain);
+  return all.every((t): t is Term => !!t) ? { raw: group(all), neg: false, all } : undefined;
+}
+
+const group = (all: Term[]) => `(${all.map(termText).join(" ")})`;
 
 function show(query: Query): string {
   if (query.op === "term") return query.raw;
@@ -29,7 +41,7 @@ function clause(query: Query): Clause {
   const single = term(query);
   if (single) return { terms: [single] };
   if (query.op === "or") {
-    const terms = query.children.map(term);
+    const terms = query.children.map((child) => term(child, true));
     if (terms.every((t): t is Term => !!t)) return { terms };
   }
   return { raw: show(query) };
@@ -41,7 +53,9 @@ export function toClauses(query: string): Clause[] {
   return parsed.op === "and" ? parsed.children.map(clause) : [clause(parsed)];
 }
 
-const termText = (t: Term) => `${t.neg ? "-" : ""}${t.raw}`;
+function termText(t: Term): string {
+  return `${t.neg ? "-" : ""}${t.raw}`;
+}
 
 /** AND binds tighter than OR (as on derpibooru), so an OR chip among others needs parentheses. */
 export function toQuery(clauses: Clause[]): string {
@@ -156,4 +170,30 @@ export function editTerm(query: string, at: { clause: number; term: number }, ch
 /** Whether the query excludes this tag on its own (`-tag` as a clause). */
 export function excludesTag(query: string, tag: string): boolean {
   return toClauses(query).some((c) => !("raw" in c) && c.terms.length === 1 && c.terms[0].neg && same(c.terms[0].raw, tag));
+}
+
+/**
+ * A term dropped on the "and" beside an alternative inside an OR: that alternative becomes
+ * (it and the new term). A chip moved there (`from`) leaves its old place.
+ */
+export function andWith(query: string, to: { clause: number; term: number }, added: Term, from?: { clause: number; term: number }): string {
+  const clauses = toClauses(query);
+  const target = clauses[to.clause];
+  if (!target || "raw" in target) return query;
+  const host = target.terms[to.term];
+  const all = [...(host.all ?? [host]), { raw: added.raw, neg: added.neg }];
+  const holed: (Clause | undefined)[] = clauses.map((c, i) => {
+    if ("raw" in c) return c;
+    const terms = c.terms
+      .map((t, j) => (i === to.clause && j === to.term ? { raw: group(all), neg: false, all } : t))
+      .filter((_, j) => !(from && i === from.clause && j === from.term));
+    return { terms };
+  });
+  return toQuery(holed.filter((c): c is Clause => !!c && ("raw" in c || c.terms.length > 0)));
+}
+
+/** Whether the query asks for this tag anywhere: alone, in an "or" group or inside an "and" in one. */
+export function mentions(query: string, tag: string): boolean {
+  const found = (t: Term): boolean => (!t.neg && same(t.raw, tag)) || (t.all ?? []).some(found);
+  return toClauses(query).some((c) => !("raw" in c) && c.terms.some(found));
 }
