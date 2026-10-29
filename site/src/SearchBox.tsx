@@ -3,7 +3,7 @@ import { applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause,
 import { allowDrop, dragged, endDrag, startDrag } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
-import { route, setQuery } from "./route";
+import { currentQuery, route, setQuery } from "./route";
 import { suggest } from "./search";
 import { namespaceKey, TagLabel } from "./Tag";
 import TagCloud from "./TagCloud";
@@ -35,7 +35,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const commit = (text: string) => {
     const value = text.trim().replace(/,$/, "").trim();
     if (!value) return;
-    const q = route().q;
+    const q = currentQuery();
     // a negated word goes through the menu logic (no duplicates); other text joins as its own clauses
     setQuery(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
     setDraft("");
@@ -44,7 +44,7 @@ export default function SearchBox(props: { stuck: boolean }) {
 
   const pick = (tag: string) => {
     const negate = /^[-!]/.test(draft());
-    setQuery(applyTag(route().q, tag, negate ? "exclude" : "and"));
+    setQuery(applyTag(currentQuery(), tag, negate ? "exclude" : "and"));
     setDraft("");
     setActive(0);
     input?.focus();
@@ -93,7 +93,7 @@ export default function SearchBox(props: { stuck: boolean }) {
     setOver(undefined);
     endDrag();
     if (!what) return;
-    const q = route().q;
+    const q = currentQuery();
     if (what.kind === "tag") {
       if (to === "remove") return;
       setQuery(to === "negate" ? applyTag(q, what.tag, "exclude") : dropTag(q, what.tag, to));

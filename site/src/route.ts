@@ -25,7 +25,17 @@ const [route, setRoute] = createSignal(read());
 // where the reader was in the feed, so coming back from a post lands on the same tile
 let feedScroll: { q: string; y: number } | undefined;
 
+// a query set but not yet in route(): the hash changes asynchronously, and several chips
+// can be committed before it does (typing "opus -codex " commits two)
+let pending: string | undefined;
+
+/** The query as of the last change, including one the address has not caught up with. */
+export function currentQuery(): string {
+  return pending ?? route().q;
+}
+
 window.addEventListener("hashchange", () => {
+  pending = undefined;
   const prev = route();
   const next = read();
   if (prev.page === "feed" && next.page !== "feed") feedScroll = { q: prev.q, y: window.scrollY };
@@ -52,6 +62,7 @@ export function postHref(id: string): string {
 
 /** A deliberate change (a tag click, a chip menu): one history entry, so Back undoes it. */
 export function setQuery(q: string) {
+  pending = q;
   location.hash = feedHref(q);
 }
 

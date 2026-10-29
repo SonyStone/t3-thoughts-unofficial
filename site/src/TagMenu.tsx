@@ -2,7 +2,7 @@ import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { vocabulary } from "virtual:content";
 import { applyTag, hasTag, toClauses, type TagAction } from "./clauses";
 import { t } from "./i18n";
-import { route, setQuery } from "./route";
+import { currentQuery, route, setQuery } from "./route";
 import { relatedTags, similarTags } from "./search";
 import { describe, namespaceKey, Tag, TagLabel } from "./Tag";
 
@@ -89,7 +89,7 @@ export default function TagMenu() {
   const choices = createMemo(() => {
     const open = menu();
     if (!open) return [];
-    const q = route().q;
+    const q = currentQuery();
     const seen = new Set([q]);
     return ACTIONS.map((action) => ({ action, query: applyTag(q, open.tag, action) })).filter(({ query }) => {
       if (seen.has(query)) return false;
