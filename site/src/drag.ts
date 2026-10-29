@@ -20,6 +20,11 @@ export function startDrag(event: DragEvent, what: Dragged) {
   setDragged(what);
 }
 
+/** A drag that is not the browser's own: a finger moving a chip (see SearchBox). */
+export function beginDrag(what: Dragged) {
+  setDragged(what);
+}
+
 export function endDrag() {
   setDragged(undefined);
 }

@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
-import { allowDrop, dragged, endDrag, startDrag } from "./drag";
+import { allowDrop, beginDrag, dragged, endDrag, startDrag } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { currentQuery, route, setQuery } from "./route";
@@ -89,6 +89,10 @@ export default function SearchBox(props: { stuck: boolean }) {
   const drop = (event: DragEvent, to: Drop | "negate" | "remove") => {
     event.preventDefault();
     event.stopPropagation();
+    place(to);
+  };
+
+  const place = (to: Drop | "negate" | "remove") => {
     const what = dragged();
     setOver(undefined);
     endDrag();
@@ -103,7 +107,10 @@ export default function SearchBox(props: { stuck: boolean }) {
     setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
   };
 
-  const target = (key: string, to: Drop | "negate" | "remove") => ({
+  // every drop place by its key, so a finger drag can find what is under it (data-drop)
+  const targets = new Map<string, Drop | "negate" | "remove">();
+  const target = (key: string, to: Drop | "negate" | "remove") => (targets.set(key, to), {
+    "data-drop": key,
     onDragOver: (event: DragEvent) => {
       allowDrop(event);
       event.stopPropagation();
@@ -126,8 +133,67 @@ export default function SearchBox(props: { stuck: boolean }) {
     return () => window.removeEventListener("keydown", focusShortcut);
   });
 
+  /**
+   * Phones have no drag and drop for elements, so a finger drags a chip by hand: past 8px
+   * of movement the chip follows the finger, the place under it lights up, and letting go
+   * drops it there. A touch that does not move stays a tap and opens the tag menu.
+   */
+  let moved = false;
+  const fingerDrag = (chip: { term: Term; clause: number; index: number }) => {
+    let start = { x: 0, y: 0 };
+    let el: HTMLElement | undefined;
+    const keyAt = (x: number, y: number) =>
+      (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
+    return {
+      onPointerDown: (event: PointerEvent) => {
+        if (event.pointerType === "mouse") return;
+        el = event.currentTarget as HTMLElement;
+        start = { x: event.clientX, y: event.clientY };
+        moved = false;
+        try {
+          el.setPointerCapture(event.pointerId);
+        } catch {
+          // a pointer the browser no longer tracks; the drag then follows events as they come
+        }
+      },
+      onPointerMove: (event: PointerEvent) => {
+        if (!el || event.pointerType === "mouse") return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (!moved && Math.hypot(dx, dy) < 8) return;
+        if (!moved) {
+          moved = true;
+          beginDrag({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg });
+          el.classList.add("lifted");
+        }
+        el.style.transform = `translate(${dx}px, ${dy}px)`;
+        setOver(keyAt(event.clientX, event.clientY));
+      },
+      onPointerUp: (event: PointerEvent) => {
+        if (!el || event.pointerType === "mouse") return;
+        const key = moved ? keyAt(event.clientX, event.clientY) : undefined;
+        el.style.transform = "";
+        el.classList.remove("lifted");
+        el = undefined;
+        setOver(undefined);
+        if (key && targets.has(key)) place(targets.get(key)!);
+        else endDrag();
+      },
+      onPointerCancel: () => {
+        if (!el) return;
+        el.style.transform = "";
+        el.classList.remove("lifted");
+        el = undefined;
+        moved = false;
+        setOver(undefined);
+        endDrag();
+      },
+    };
+  };
+
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
+      {...fingerDrag(chip)}
       class={{ chip: true, neg: chip.term.neg }}
       data-ns={namespaceKey(chip.term.raw)}
       draggable="true"
@@ -136,7 +202,14 @@ export default function SearchBox(props: { stuck: boolean }) {
         setOver(undefined);
         endDrag();
       }}
-      onClick={(event) => openTagMenu(event, chip.term.raw)}
+      onClick={(event) => {
+        // the click that ends a finger drag is not a tap
+        if (moved) {
+          moved = false;
+          return;
+        }
+        openTagMenu(event, chip.term.raw);
+      }}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
       <TagLabel tag={chip.term.raw} />

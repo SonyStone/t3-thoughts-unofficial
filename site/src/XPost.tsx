@@ -62,11 +62,27 @@ function XAvatar(props: { post: ForeignPost; small?: boolean }) {
   );
 }
 
+/** X's blue check; only Theo gets it here, since the data does not say who else has one. */
+function Verified() {
+  return (
+    <svg class="x-verified" viewBox="0 0 22 22" aria-label="Verified account">
+      <path
+        fill="currentColor"
+        d="M20.4 11c0-1.4-.8-2.6-2-3.2.4-1.3.1-2.8-.9-3.8s-2.5-1.3-3.8-.9C13.1 1.9 11.9 1 10.5 1S7.9 1.9 7.3 3.1c-1.3-.4-2.8-.1-3.8.9s-1.3 2.5-.9 3.8C1.4 8.4.6 9.6.6 11s.8 2.6 2 3.2c-.4 1.3-.1 2.8.9 3.8s2.5 1.3 3.8.9c.6 1.2 1.8 2.1 3.2 2.1s2.6-.9 3.2-2.1c1.3.4 2.8.1 3.8-.9s1.3-2.5.9-3.8c1.2-.6 2-1.8 2-3.2z"
+      />
+      <path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M6.8 11.2l2.7 2.7 5.6-5.8" />
+    </svg>
+  );
+}
+
 function XHeader(props: { post: ForeignPost; at?: Date; href?: string }) {
   return (
     <div class="x-head">
       <a class="x-name" href={props.post.url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-        {props.post.name ?? props.post.author.replace(/^@/, "")}
+        {(props.post.name ?? props.post.author.replace(/^@/, "")).trim()}
+        <Show when={props.post.author.toLowerCase() === "@theo"}>
+          <Verified />
+        </Show>
       </a>
       <span class="x-handle">{props.post.author}</span>
       <Show when={props.at}>
@@ -161,11 +177,10 @@ function XActions(props: { metrics?: Metrics; url?: string; focused?: boolean })
   const stop = (event: MouseEvent) => event.stopPropagation();
   return (
     <div class="x-actions" title={asOf()}>
-      <For each={ACTIONS}>
+      {/* a focused post has its views in the line above, as on X, so its bar has no views action */}
+      <For each={props.focused ? ACTIONS.filter(([icon]) => icon !== "views") : ACTIONS}>
         {([icon, key, href]) => {
-          // a focused post has its views in the line above, as on X
-          const value = () =>
-            key && props.metrics && !(props.focused && key === "views") ? (props.metrics[key] as number | undefined) : undefined;
+          const value = () => (key && props.metrics ? (props.metrics[key] as number | undefined) : undefined);
           return (
             <a class="x-action" data-action={icon} href={id() ? href(id()!) : props.url} target="_blank" rel="noreferrer" aria-label={icon} onClick={stop}>
               <Icon name={icon} />

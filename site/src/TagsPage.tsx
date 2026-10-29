@@ -8,6 +8,12 @@ type Order = "count" | "name";
 
 const bareName = (tag: string) => tag.slice(tag.indexOf(":") + 1);
 
+/** A description that only repeats the name ("Apple" for company:apple) says nothing. */
+function about(tag: string): string | undefined {
+  const text = describe(vocabulary.tags[tag]);
+  return text && text.toLowerCase().replace(/[^a-z0-9]/g, "") !== bareName(tag).replace(/[^a-z0-9]/g, "") ? text : undefined;
+}
+
 /**
  * All tags by namespace: an index of namespaces on the side, a filter and an order on top,
  * and per tag its description and how often it is used.
@@ -98,7 +104,7 @@ export default function TagsPage() {
                         {([tag, count]) => (
                           <li>
                             <Tag tag={tag} />
-                            <span class={{ "tag-about": true, none: !describe(vocabulary.tags[tag]) }}>{describe(vocabulary.tags[tag]) ?? "—"}</span>
+                            <span class={{ "tag-about": true, none: !about(tag) }}>{about(tag) ?? "—"}</span>
                             <span class="tag-freq-count">{count}</span>
                           </li>
                         )}

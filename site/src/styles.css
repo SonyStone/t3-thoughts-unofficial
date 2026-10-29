@@ -484,6 +484,18 @@ main.on-hero {
   cursor: grab;
 }
 
+/* a finger on a chip in the search drags it instead of scrolling the page */
+.search .chip {
+  touch-action: none;
+}
+
+.chip.lifted {
+  position: relative;
+  z-index: 10;
+  pointer-events: none;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
+}
+
 .chip:hover {
   border-color: var(--muted);
 }
@@ -1206,6 +1218,14 @@ main.on-hero {
   white-space: nowrap;
 }
 
+.x-verified {
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  color: var(--x-blue);
+  vertical-align: -4px;
+}
+
 .x-name {
   overflow: hidden;
   color: var(--x-text);
@@ -1401,7 +1421,13 @@ a.x-name:hover,
   container-type: inline-size;
 }
 
-@container (max-width: 340px) {
+@container (max-width: 420px) {
+  .x-action[data-action="bookmark"] {
+    display: none;
+  }
+}
+
+@container (max-width: 300px) {
   .x-action-end {
     display: none;
   }
@@ -1762,9 +1788,8 @@ a.x-name:hover,
 .figures {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 28px;
+  margin: 28px 0 0;
   border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
 }
 
 .figure {
@@ -1807,7 +1832,7 @@ a.x-name:hover,
 
 .panel {
   padding: 28px 0 8px;
-  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
 
 .panel h3 {
@@ -2271,6 +2296,7 @@ footer {
 
   /* the frame keeps its proportions here too; only the tagline has a floor to stay readable */
   .hero p {
+    max-width: calc(100% - 96px);
     font-size: max(0.72rem, 1.4cqw);
   }
 
@@ -2351,7 +2377,7 @@ footer {
   }
 
   .hero-cloud .cloud-tags {
-    mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
     flex-wrap: nowrap;
     margin: 0 -12px;
     padding: 0 12px 4px;
@@ -2446,4 +2472,31 @@ footer {
     margin-left: 0;
   }
 
+}
+
+/* touch screens have no hover: a tapped link or card must not stay lit */
+@media (hover: none) {
+  .bar-label a:not(.tag):hover,
+  .tile-body:hover .entry-title a,
+  .row-main:hover .entry-title a {
+    color: var(--text);
+  }
+
+  .tags-index a:hover {
+    background: none;
+    color: var(--text-2);
+  }
+
+  .tile:hover {
+    border-color: var(--line);
+  }
+
+  .x-post:hover {
+    background: none;
+  }
+
+  .tag:hover,
+  .chip:hover {
+    border-color: var(--line);
+  }
 }
