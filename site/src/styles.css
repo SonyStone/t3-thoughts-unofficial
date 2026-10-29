@@ -680,9 +680,12 @@ main.on-hero {
   border-color: var(--accent);
 }
 
-/* the chip being carried leaves the box until it is dropped */
+/* the chip being carried leaves the box until it is dropped. Not display: none: Chrome
+   cancels a drag whose source element stops being rendered. */
 .chip.carried {
-  display: none;
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .search-drop {
