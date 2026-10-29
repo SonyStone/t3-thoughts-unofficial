@@ -5,7 +5,7 @@ import { lang, t } from "./i18n";
 import { applyTag, excludesTag, uses } from "./clauses";
 import { feedHref, route } from "./route";
 import { draggable } from "./drag";
-import { longPress, openTagMenu } from "./TagMenu";
+import { openAt, openTagMenu } from "./TagMenu";
 import { namespaceOf } from "./search";
 
 /** Display order of namespaces; a tag without one is a topic. */
@@ -45,8 +45,12 @@ export function TagLabel(props: { tag: string }) {
  * opens the tag menu (a right click) and can be dragged into the search box. Colored by namespace as on derpibooru.
  */
 export function Tag(props: { tag: string; count?: number; implied?: boolean }) {
-  const press = longPress(() => props.tag);
-  const drag = draggable(() => ({ kind: "tag", tag: props.tag }), { touch: false });
+  // a finger rests on a tag to pick it up; let go in place, that opens the menu (phones have
+  // no right click, and their own long-press menu for links would preview the link)
+  const drag = draggable(() => ({ kind: "tag", tag: props.tag }), {
+    touch: "hold",
+    onHeld: (el, x, y) => openAt(el, props.tag, x, y),
+  });
   return (
     <a
       // in the search either way, asked for or excluded
@@ -56,15 +60,9 @@ export function Tag(props: { tag: string; count?: number; implied?: boolean }) {
       title={props.implied ? t().impliedTag : describe(vocabulary.tags[props.tag])}
       draggable={drag.draggable}
       onDragStart={drag.onDragStart}
-      onClick={(event) => press.onClick(event) || event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
       onContextMenu={(event) => openTagMenu(event, props.tag)}
-      onPointerDown={(event) => {
-        press.onPointerDown(event);
-        drag.onPointerDown(event);
-      }}
-      onPointerMove={press.onPointerMove}
-      onPointerUp={press.onPointerUp}
-      onPointerCancel={press.onPointerCancel}
+      onPointerDown={drag.onPointerDown}
     >
       <TagLabel tag={props.tag} />
       <Show when={props.count !== undefined}>

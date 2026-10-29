@@ -32,6 +32,8 @@ export function onDrop(drop: DropHandler, isOutside: (x: number, y: number) => b
 }
 
 const THRESHOLD = 6;
+/** How long a finger rests on a tag before it is picked up (the page scrolls under a quicker swipe). */
+export const HOLD_MS = 450;
 
 let proxy: HTMLDivElement | undefined;
 function getProxy(): HTMLDivElement {
@@ -64,21 +66,35 @@ window.addEventListener(
 );
 
 /**
- * Handlers for an element that can be dragged. `touch: false` leaves finger touches to the
- * page (a tag row has to scroll); the mouse always drags.
+ * Handlers for an element that can be dragged; the mouse always drags. A finger drags at
+ * once, or with `touch: "hold"` only after resting on it for HOLD_MS: a swipe before that
+ * scrolls the page (a tag row has to scroll), and a hold let go without moving calls
+ * `onHeld` (the tag menu).
  */
-export function draggable(what: () => Dragged, options: { touch?: boolean } = {}) {
+export function draggable(
+  what: () => Dragged,
+  options: { touch?: true | "hold"; onHeld?: (source: HTMLElement, x: number, y: number) => void } = {},
+) {
   return {
     draggable: "false" as const,
     onDragStart: (event: DragEvent) => event.preventDefault(),
     onPointerDown: (event: PointerEvent) => {
-      if (event.button !== 0 || (event.pointerType !== "mouse" && options.touch === false)) return;
+      if (event.button !== 0) return;
       const source = event.currentTarget as HTMLElement;
       const start = { x: event.clientX, y: event.clientY };
       const pointer = event.pointerId;
       let ghost: HTMLElement | undefined;
       let offset = { x: 0, y: 0 };
       let target: HTMLElement = source;
+      // a finger on a "hold" element is armed once it has rested there
+      let armed = event.pointerType === "mouse" || options.touch !== "hold";
+      const timer = armed
+        ? undefined
+        : window.setTimeout(() => {
+            armed = true;
+            source.setAttribute("data-held", "");
+            navigator.vibrate?.(10);
+          }, HOLD_MS);
       try {
         source.setPointerCapture(pointer);
       } catch {
@@ -86,6 +102,7 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
       }
 
       const begin = () => {
+        source.removeAttribute("data-held");
         const box = source.getBoundingClientRect();
         offset = { x: start.x - box.left, y: start.y - box.top };
         ghost = source.cloneNode(true) as HTMLElement;
@@ -108,7 +125,10 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
 
       const move = (e: PointerEvent) => {
         if (e.pointerId !== pointer) return;
-        if (!dragged() && Math.hypot(e.clientX - start.x, e.clientY - start.y) < THRESHOLD) return;
+        const far = Math.hypot(e.clientX - start.x, e.clientY - start.y) >= THRESHOLD;
+        // a swipe before the hold: the page scrolls, nothing is dragged
+        if (!armed) return far && finish(e, false);
+        if (!dragged() && !far) return;
         if (!dragged()) begin();
         e.preventDefault();
         ghost!.style.transform = `translate(${e.clientX - offset.x}px, ${e.clientY - offset.y}px)`;
@@ -116,6 +136,10 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
       };
 
       const finish = (e: Event, drop: boolean) => {
+        window.clearTimeout(timer);
+        source.removeAttribute("data-held");
+        window.removeEventListener("touchmove", noScroll, true);
+        window.removeEventListener("contextmenu", noMenu, true);
         window.removeEventListener("pointermove", move, true);
         window.removeEventListener("pointerup", up, true);
         window.removeEventListener("pointercancel", cancel, true);
@@ -137,7 +161,10 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
           setOver(undefined);
           setDragged(undefined);
         }
-        if (!what) return;
+        // held and let go in place: the press was for the menu
+        const held = !what && armed && drop && options.touch === "hold" && event.pointerType !== "mouse" && e instanceof PointerEvent;
+        if (held) options.onHeld?.(source, start.x, start.y);
+        if (!what && !held) return;
         swallowClick = true;
         setTimeout(() => (swallowClick = false), 0);
       };
@@ -147,6 +174,18 @@ export function draggable(what: () => Dragged, options: { touch?: boolean } = {}
       // the window lost focus or the pointer (a screenshot tool, an alert): the drag ends, nothing drops
       const lost = (e: Event) => dragged() && finish(e, false);
 
+      // once armed, a moving finger drags instead of scrolling: the page has not started to
+      // scroll while it rested, and a cancelled touchmove keeps it from starting
+      const noScroll = (e: TouchEvent) => armed && e.cancelable && e.preventDefault();
+      // the phone's own long-press menu would end the press; the hold has its own menu
+      const noMenu = (e: Event) => {
+        if (event.pointerType === "mouse") return;
+        e.preventDefault();
+        e.stopPropagation();
+      };
+
+      window.addEventListener("touchmove", noScroll, { capture: true, passive: false });
+      window.addEventListener("contextmenu", noMenu, true);
       window.addEventListener("pointermove", move, true);
       window.addEventListener("pointerup", up, true);
       window.addEventListener("pointercancel", cancel, true);

@@ -538,6 +538,14 @@ main.on-hero {
   cursor: grabbing;
 }
 
+/* a tag a finger has rested on long enough: picked up, ready to drag (or let go for the menu) */
+[data-held] {
+  transform: scale(1.08);
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s;
+}
+
 /* the tag or chip being dragged stays in place, dimmed, while its copy follows the pointer */
 [data-drag-source] {
   opacity: 0.35;
