@@ -139,23 +139,54 @@ export function hasTag(query: string, tag: string): boolean {
 /** Where a dragged term goes: into a clause as one more OR, or as its own clause before `index`. */
 export type Drop = { join: number } | { before: number };
 
-/** A chip dragged inside the search box: out of its clause and into another place. */
-export function moveTerm(query: string, from: { clause: number; term: number }, to: Drop, neg?: boolean): string {
-  const clauses = toClauses(query);
-  const source = clauses[from.clause];
-  if (!source || "raw" in source) return query;
-  const moved = { ...source.terms[from.term], ...(neg === undefined ? {} : { neg }) };
-  // leave a hole first, so `to` keeps pointing at the clauses it was computed for
-  const holed: (Clause | undefined)[] = clauses.map((c, i) =>
-    i === from.clause ? { terms: source.terms.filter((_, t) => t !== from.term) } : c,
-  );
+/** Where a chip is: its clause, its term, and for one part of an "and" group inside an OR, that part. */
+export type At = { clause: number; term: number; part?: number };
+
+/** Clauses while a term is being moved: its old place is a hole until the move is done. */
+type Slot = { raw: string } | { terms: (Term | undefined)[] };
+
+const settle = (slots: Slot[]): Clause[] =>
+  slots
+    .map((s) => ("raw" in s ? s : { terms: s.terms.filter((t): t is Term => !!t) }))
+    .filter((c) => "raw" in c || c.terms.length > 0);
+
+/** An "and" group of these parts; one part left is a plain term again. */
+const andTerm = (all: Term[]): Term => (all.length === 1 ? all[0] : { raw: group(all), neg: false, all });
+
+/**
+ * Takes the term at `at` out, leaving a hole so indices into the clauses stay right. A part
+ * leaves the rest of its group in place, so even its own term keeps its index.
+ */
+function lift(clauses: Clause[], at: At): { moved?: Term; slots: Slot[] } {
+  let moved: Term | undefined;
+  const slots = clauses.map((c, i): Slot => {
+    if ("raw" in c || i !== at.clause) return c;
+    return {
+      terms: c.terms.map((t, j) => {
+        if (j !== at.term) return t;
+        if (at.part === undefined || !t.all) {
+          moved = t;
+          return undefined;
+        }
+        moved = t.all[at.part];
+        return andTerm(t.all.filter((_, k) => k !== at.part));
+      }),
+    };
+  });
+  return { moved, slots };
+}
+
+/** A chip dragged inside the search box: out of its place and into another. */
+export function moveTerm(query: string, from: At, to: Drop): string {
+  const { moved, slots } = lift(toClauses(query), from);
+  if (!moved) return query;
   if ("join" in to) {
-    const target = holed[to.join];
-    if (target && !("raw" in target)) holed[to.join] = { terms: [...target.terms, moved] };
+    const target = slots[to.join];
+    if (target && !("raw" in target)) slots[to.join] = { terms: [...target.terms, moved] };
   } else {
-    holed.splice(to.before, 0, { terms: [moved] });
+    slots.splice(to.before, 0, { terms: [moved] });
   }
-  return toQuery(holed.filter((c): c is Clause => !!c && ("raw" in c || c.terms.length > 0)));
+  return toQuery(settle(slots));
 }
 
 /** A tag dragged in from the page: a new clause, or one more OR in a clause. */
@@ -173,13 +204,22 @@ export function dropTag(query: string, tag: string, to: Drop): string {
 }
 
 /** A chip dropped on the "without" or "remove" place: flip its minus, or take it out. */
-export function editTerm(query: string, at: { clause: number; term: number }, change: "negate" | "remove"): string {
-  const clauses = toClauses(query).map((c, i) => {
-    if (i !== at.clause || "raw" in c) return c;
-    if (change === "remove") return { terms: c.terms.filter((_, t) => t !== at.term) };
-    return { terms: c.terms.map((term, t) => (t === at.term ? { ...term, neg: !term.neg } : term)) };
-  });
-  return toQuery(clauses.filter((c) => "raw" in c || c.terms.length > 0));
+export function editTerm(query: string, at: At, change: "negate" | "remove"): string {
+  const clauses = toClauses(query);
+  if (change === "remove") return toQuery(settle(lift(clauses, at).slots));
+  const flip = (t: Term) => ({ ...t, neg: !t.neg });
+  return toQuery(
+    clauses.map((c, i) => {
+      if (i !== at.clause || "raw" in c) return c;
+      return {
+        terms: c.terms.map((t, j) => {
+          if (j !== at.term) return t;
+          if (at.part === undefined || !t.all) return flip(t);
+          return andTerm(t.all.map((part, k) => (k === at.part ? flip(part) : part)));
+        }),
+      };
+    }),
+  );
 }
 
 /** Whether the query excludes this tag on its own (`-tag` as a clause). */
@@ -188,23 +228,27 @@ export function excludesTag(query: string, tag: string): boolean {
 }
 
 /**
- * A term dropped on the "and" beside an alternative inside an OR: that alternative becomes
- * (it and the new term). A chip moved there (`from`) leaves its old place.
+ * A term dropped on the "and" tab over an alternative inside an OR: that alternative becomes
+ * (it and the new term): a tag from the page, or a chip that leaves its old place (`from`).
  */
-export function andWith(query: string, to: { clause: number; term: number }, added: Term, from?: { clause: number; term: number }): string {
+export function andWith(query: string, to: { clause: number; term: number }, what: { term: Term } | { from: At }): string {
   const clauses = toClauses(query);
-  const target = clauses[to.clause];
-  if (!target || "raw" in target) return query;
-  const host = target.terms[to.term];
-  const all = [...(host.all ?? [host]), { raw: added.raw, neg: added.neg }];
-  const holed: (Clause | undefined)[] = clauses.map((c, i) => {
-    if ("raw" in c) return c;
-    const terms = c.terms
-      .map((t, j) => (i === to.clause && j === to.term ? { raw: group(all), neg: false, all } : t))
-      .filter((_, j) => !(from && i === from.clause && j === from.term));
-    return { terms };
-  });
-  return toQuery(holed.filter((c): c is Clause => !!c && ("raw" in c || c.terms.length > 0)));
+  let slots: Slot[] = clauses;
+  let added: Term;
+  if ("from" in what) {
+    const lifted = lift(clauses, what.from);
+    if (!lifted.moved) return query;
+    slots = lifted.slots;
+    added = lifted.moved;
+  } else {
+    added = what.term;
+  }
+  const target = slots[to.clause];
+  const host = target && !("raw" in target) ? target.terms[to.term] : undefined;
+  if (!target || "raw" in target || !host) return query;
+  const all = [...(host.all ?? [host]), ...(added.all && !added.neg ? added.all : [{ raw: added.raw, neg: added.neg }])];
+  slots[to.clause] = { terms: target.terms.map((t, j) => (j === to.term ? andTerm(all) : t)) };
+  return toQuery(settle(slots));
 }
 
 /** Whether the query asks for this tag anywhere: alone, in an "or" group or inside an "and" in one. */

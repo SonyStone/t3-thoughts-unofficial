@@ -783,6 +783,29 @@ main.on-hero {
   border-radius: 6px;
 }
 
+/* a part dragged out of its group goes with its "and" (the one before it, or after the first) */
+.and-group .part.carried,
+.and-group .chip-op:has(+ .part.carried),
+.and-group .bracket + .part.carried + .chip-op {
+  display: none;
+}
+
+/* the copy of a part that follows the pointer, out of the chip that styled it */
+.part.drag-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  white-space: nowrap;
+}
+
+.part.drag-ghost::before,
 .and-group .part::before {
   content: "";
   width: 7px;
@@ -791,6 +814,12 @@ main.on-hero {
   background: var(--ns, var(--line-strong));
 }
 
+.and-group .part {
+  cursor: grab;
+  touch-action: none;
+}
+
+.part.drag-ghost .tag-ns,
 .and-group .part .tag-ns {
   margin-right: -5px;
 }

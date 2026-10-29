@@ -125,3 +125,46 @@ await browser.close();
   await p3.keyboard.press("Escape");
   await browser3.close();
 }
+
+// one tag out of an "and" group at a time: the group stays, less that tag
+{
+  const browser4 = await chromium.launch();
+  const p4 = await browser4.newPage({ viewport: { width: 1340, height: 900 } });
+  const grouped = "open-source (kind:repost || (ui prompts-vs-features)) agents";
+  const read = () => p4.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
+  async function dragPart(name, grab, to, shot) {
+    await p4.goto("about:blank");
+    await p4.goto("http://localhost:5173/#/?q=" + encodeURIComponent(grouped));
+    await p4.waitForTimeout(300);
+    const a = await grab().boundingBox();
+    await p4.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+    await p4.mouse.down();
+    await p4.mouse.move(a.x + a.width / 2 + 15, a.y + 60, { steps: 3 });
+    await p4.waitForTimeout(80);
+    const left = (await p4.locator(".search .chip.compound").allInnerTexts()).join(" | ") || "(no group)";
+    if (shot) await p4.screenshot({ path: shot, clip: { x: 0, y: 380, width: 1340, height: 300 } });
+    const b = await to();
+    await p4.mouse.move(b.x, b.y, { steps: 5 });
+    await p4.mouse.up();
+    await p4.waitForTimeout(250);
+    console.log(name.padEnd(28), "->", JSON.stringify(await read()), "while carried:", JSON.stringify(left));
+  }
+  const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  const part = (text) => () => p4.locator(".search .part", { hasText: text }).first();
+  const fromCloud = (text) => () => p4.locator(".hero-cloud .tag", { hasText: text }).first();
+  await dragPart("part ui -> add", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })), "/tmp/part-drag.png");
+  await dragPart("part ui -> without", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Without" })));
+  await dragPart("part ui -> only", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Only" })));
+  await dragPart("part ui -> out", part("ui"), async () => ({ x: 700, y: 880 }));
+  await dragPart("part ui -> own or", part("ui"), () => mid(p4.locator(".or-tab").nth(1)));
+  await dragPart("part ui -> or of agents", part("ui"), () => mid(p4.locator(".or-tab").last()));
+  await dragPart("part ui -> and kind:repost", part("ui"), () => mid(p4.locator(".and-tab").first()));
+  await dragPart("part p-v-f -> add", part("prompts-vs-features"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })));
+  await dragPart("cloud ui (a part) -> add", fromCloud("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })));
+  // a click on a part opens the menu for that tag, not for the group
+  await p4.goto("http://localhost:5173/#/?q=" + encodeURIComponent(grouped));
+  await p4.waitForTimeout(300);
+  await part("ui")().click();
+  console.log("click on part ui".padEnd(28), "-> menu:", JSON.stringify((await p4.locator('[role="menu"]').innerText()).split("\n")[0]));
+  await browser4.close();
+}

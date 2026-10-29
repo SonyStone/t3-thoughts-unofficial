@@ -10,7 +10,9 @@ import { createSignal } from "solid-js";
  * Drop places mark themselves with `data-drop="<key>"`; whoever owns them registers one
  * handler with `onDrop` and reads `over()` to light the place under the pointer.
  */
-export type Dragged = { kind: "chip"; clause: number; term: number; raw: string; neg: boolean } | { kind: "tag"; tag: string };
+export type Dragged =
+  | { kind: "chip"; clause: number; term: number; part?: number; raw: string; neg: boolean }
+  | { kind: "tag"; tag: string };
 
 const [dragged, setDragged] = createSignal<Dragged | undefined>();
 const [over, setOver] = createSignal<string | undefined>();

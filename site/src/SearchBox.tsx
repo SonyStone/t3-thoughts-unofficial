@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
-import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type Clause, type Drop, type Term } from "./clauses";
+import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type At, type Clause, type Drop, type Term } from "./clauses";
 import { draggable, dragged, onDrop, over, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
@@ -151,8 +151,8 @@ export default function SearchBox(props: { stuck: boolean }) {
     const at = carried();
     const q = currentQuery();
     if (typeof to === "object" && "andWith" in to) {
-      if (what.kind === "tag" && !at) setQuery(andWith(q, to.andWith, { raw: what.tag, neg: false }));
-      else if (at) setQuery(andWith(q, to.andWith, (clauses()[at.clause] as { terms: Term[] }).terms[at.term], at));
+      if (what.kind === "tag" && !at) setQuery(andWith(q, to.andWith, { term: { raw: what.tag, neg: false } }));
+      else if (at) setQuery(andWith(q, to.andWith, { from: at }));
       return;
     }
     // a tag from the page that is already in the search moves that chip, like a chip would
@@ -171,7 +171,8 @@ export default function SearchBox(props: { stuck: boolean }) {
       else if (to === "negate") setQuery(toQuery(clauses().map((c, i) => (i === at.clause ? { raw: raw.startsWith("-") ? raw.slice(1) : `-${raw}` } : c))));
       return;
     }
-    const term = (clauses()[at.clause] as { terms: Term[] }).terms[at.term];
+    const host = (clauses()[at.clause] as { terms: Term[] }).terms[at.term];
+    const term = at.part === undefined ? host : host.all![at.part];
     if (to === "only") setQuery(`${term.neg ? "-" : ""}${term.raw}`);
     else setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
   };
@@ -180,26 +181,33 @@ export default function SearchBox(props: { stuck: boolean }) {
    * The chip in the search that is being carried: a chip dragged out of it, or a tag from
    * the page that the search already has. It leaves the box while it is carried.
    */
-  const carried = createMemo(() => {
+  const carried = createMemo((): At | undefined => {
     const what = dragged();
     if (!what) return undefined;
-    if (what.kind === "chip") return { clause: what.clause, term: what.term };
+    if (what.kind === "chip") return { clause: what.clause, term: what.term, part: what.part };
+    const same = (each: Term) => each.raw.toLowerCase() === what.tag.toLowerCase();
     for (const [index, clause] of clauses().entries()) {
       if ("raw" in clause) continue;
-      const term = clause.terms.findIndex((each) => each.raw.toLowerCase() === what.tag.toLowerCase());
-      if (term >= 0) return { clause: index, term };
+      for (const [term, each] of clause.terms.entries()) {
+        if (same(each)) return { clause: index, term };
+        const part = each.all?.findIndex(same) ?? -1;
+        if (part >= 0) return { clause: index, term, part };
+      }
     }
     return undefined;
   });
-  const isCarried = (clause: number, term: number) => carried()?.clause === clause && carried()?.term === term;
-  /** Joining a chip with "or" means something only for chips other than the carried one's own group. */
-  const canJoin = (index: number) => !!dragged() && carried()?.clause !== index;
+  /** The whole chip is carried (not one part of its "and" group). */
+  const isCarried = (clause: number, term: number) => carried()?.clause === clause && carried()?.term === term && carried()?.part === undefined;
+  const isCarriedPart = (clause: number, term: number, part: number) =>
+    carried()?.clause === clause && carried()?.term === term && carried()?.part === part;
+  /** Joining a chip with "or" means something only for chips other than the carried one's own group (a part may leave its "and" for it). */
+  const canJoin = (index: number) => !!dragged() && (carried()?.clause !== index || carried()?.part !== undefined);
 
   /** A group that is still an "or" with the carried chip gone from it: its alternatives get "and" tabs. */
   const staysOr = (index: number) => {
     const clause = clauses()[index];
     if (!dragged() || !clause || "raw" in clause) return false;
-    return clause.terms.length - (carried()?.clause === index ? 1 : 0) > 1;
+    return clause.terms.length - (carried()?.clause === index && carried()?.part === undefined ? 1 : 0) > 1;
   };
 
   const carriedGroupSize = () => {
@@ -244,13 +252,14 @@ export default function SearchBox(props: { stuck: boolean }) {
 
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
-      {...draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg }))}
+      // an "and" group is not carried as a whole: its tags are, one at a time
+      {...(chip.term.all ? {} : draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })))}
       class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
       onClick={(event) => openTagMenu(event, chip.term.raw)}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
-      {/* an AND inside an OR: its parts in brackets, carried as one */}
+      {/* an AND inside an OR: its parts in brackets, each its own chip to drag out */}
       <Show when={chip.term.all} fallback={<TagLabel tag={chip.term.raw} />}>
         {(all) => (
           <span class="and-group">
@@ -261,9 +270,7 @@ export default function SearchBox(props: { stuck: boolean }) {
                   <Show when={k() > 0}>
                     <span class="chip-op">{t().and}</span>
                   </Show>
-                  <span class={{ part: true, neg: part.neg }} data-ns={namespaceKey(part.raw)}>
-                    <TagLabel tag={part.raw} />
-                  </span>
+                  <PartChip part={part} clause={chip.clause} term={chip.index} index={k()} />
                 </>
               )}
             </For>
@@ -274,6 +281,33 @@ export default function SearchBox(props: { stuck: boolean }) {
     </button>
   );
 
+
+  const PartChip = (chip: { part: Term; clause: number; term: number; index: number }) => {
+    const drag = draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.term, part: chip.index, raw: chip.part.raw, neg: chip.part.neg }));
+    return (
+      <span
+        draggable={drag.draggable}
+        onDragStart={drag.onDragStart}
+        // the part, not the whole group around it
+        onPointerDown={(event) => {
+          event.stopPropagation();
+          drag.onPointerDown(event);
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          openTagMenu(event, chip.part.raw);
+        }}
+        onContextMenu={(event) => {
+          event.stopPropagation();
+          openTagMenu(event, chip.part.raw);
+        }}
+        class={{ part: true, neg: chip.part.neg, carried: isCarriedPart(chip.clause, chip.term, chip.index) }}
+        data-ns={namespaceKey(chip.part.raw)}
+      >
+        <TagLabel tag={chip.part.raw} />
+      </span>
+    );
+  };
 
   return (
     <div class={{ search: true, focused: focused(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
@@ -319,7 +353,7 @@ export default function SearchBox(props: { stuck: boolean }) {
                             <span class="term">
                               {/* only inside an "or" group, a tab over each alternative: dropped there,
                                   it becomes (this and the tag); a lone chip has "Add (and)" for that */}
-                              <Show when={staysOr(index()) && !isCarried(index(), termIndex())}>
+                              <Show when={staysOr(index()) && !(carried()?.clause === index() && carried()?.term === termIndex())}>
                                 <span
                                   class={{ "and-tab": true, over: over() === `and-${index()}-${termIndex()}` }}
                                   {...target(`and-${index()}-${termIndex()}`, { andWith: { clause: index(), term: termIndex() } })}
