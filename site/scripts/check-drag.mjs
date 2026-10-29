@@ -20,6 +20,9 @@ async function tryDrag(name, sourceText, to) {
   await page.waitForTimeout(80);
   const b = await to();
   await page.mouse.move(b.x, b.y, { steps: 5 });
+  // no "or" group here, so no "and" tabs: a lone chip has "Add (and)"
+  const andTabs = await page.locator(".and-tab").count();
+  if (andTabs) console.log("  !! and tabs outside an or group:", andTabs);
   await page.mouse.up();
   await page.waitForTimeout(250);
   console.log(name.padEnd(28), "->", JSON.stringify(await q()), JSON.stringify(await state()));
@@ -28,7 +31,6 @@ const center = async (loc) => { const b = await loc.boundingBox(); return { x: b
 for (const src of ["open-source", "business", "ui"]) {
   await tryDrag(`${src} -> or tab 0`, src, () => center(page.locator(".or-tab").first()));
   await tryDrag(`${src} -> or tab last`, src, () => center(page.locator(".or-tab").last()));
-  await tryDrag(`${src} -> and tab 0`, src, () => center(page.locator(".and-tab").first()));
   await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone", { hasText: "Without" })));
   await tryDrag(`${src} -> only`, src, () => center(page.locator(".drop-zone", { hasText: "Only" })));
   await tryDrag(`${src} -> back on itself`, src, async () => ({ x: 300, y: 600 }));
@@ -104,8 +106,22 @@ await browser.close();
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
   await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone", { hasText: "Without" })));
   await dragTag("many: tag -> or under ui", "workflow", () => mid(p3.locator(".or-tab").nth(4)));
-  await dragTag("many: tag -> and over weight", "workflow", () => mid(p3.locator(".and-tab").last()));
+  await dragTag("many: and tabs only in group", "workflow", async () => {
+    console.log("  and tabs over:", await p3.evaluate(() => [...document.querySelectorAll(".and-tab")].map((el) => el.nextElementSibling?.textContent)));
+    return mid(p3.locator(".and-tab").nth(1));
+  });
   // an excluded tag counts as used in the cloud
   console.log("excluded ui marked used".padEnd(28), "->", await p3.locator(".hero-cloud .tag.active.excluded", { hasText: "ui" }).count());
+  // a chip carried out of a group of two leaves no "or" behind it, so no "and" tabs either
+  await p3.goto("about:blank");
+  await p3.goto("http://localhost:5173/#/?q=" + encodeURIComponent("(model:claude || company:anthropic) harness"));
+  await p3.waitForTimeout(300);
+  const c = await p3.locator(".search .chip", { hasText: "model:claude" }).first().boundingBox();
+  await p3.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+  await p3.mouse.down();
+  await p3.mouse.move(c.x + c.width / 2 + 15, c.y + 40, { steps: 3 });
+  await p3.waitForTimeout(80);
+  console.log("carried out of pair".padEnd(28), "-> and tabs:", await p3.locator(".and-tab").count());
+  await p3.keyboard.press("Escape");
   await browser3.close();
 }

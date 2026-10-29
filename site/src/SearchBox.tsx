@@ -20,7 +20,7 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
  * field with tag autocomplete. A space or Enter turns the text into a chip, Backspace on an
  * empty field takes the chip before the caret back, a chip click opens the tag menu. Chips
  * and tags from the page can be dragged in (drag.ts): onto the zones of the box, the "or"
- * tab under a chip, the "and" beside an alternative in a group; a chip let go off the box
+ * tab under a chip, the "and" tab over an alternative in an "or" group; a chip let go off the box
  * leaves the query.
  * `/` and ⌘K focus it from anywhere. Once it sticks to the top, focusing it shows the
  * tag cloud in a dropdown.
@@ -195,6 +195,13 @@ export default function SearchBox(props: { stuck: boolean }) {
   /** Joining a chip with "or" means something only for chips other than the carried one's own group. */
   const canJoin = (index: number) => !!dragged() && carried()?.clause !== index;
 
+  /** A group that is still an "or" with the carried chip gone from it: its alternatives get "and" tabs. */
+  const staysOr = (index: number) => {
+    const clause = clauses()[index];
+    if (!dragged() || !clause || "raw" in clause) return false;
+    return clause.terms.length - (carried()?.clause === index ? 1 : 0) > 1;
+  };
+
   const carriedGroupSize = () => {
     const at = carried();
     const clause = at && clauses()[at.clause];
@@ -310,15 +317,12 @@ export default function SearchBox(props: { stuck: boolean }) {
                               <span class="chip-op">{t().or}</span>
                             </Show>
                             <span class="term">
-                              {/* a tab over each chip: dropped there, the tag goes with it by "and";
-                                  inside an "or" group that makes (this and the tag) */}
-                              <Show when={dragged() && !isCarried(index(), termIndex())}>
+                              {/* only inside an "or" group, a tab over each alternative: dropped there,
+                                  it becomes (this and the tag); a lone chip has "Add (and)" for that */}
+                              <Show when={staysOr(index()) && !isCarried(index(), termIndex())}>
                                 <span
                                   class={{ "and-tab": true, over: over() === `and-${index()}-${termIndex()}` }}
-                                  {...target(
-                                    `and-${index()}-${termIndex()}`,
-                                    group().terms.length > 1 ? { andWith: { clause: index(), term: termIndex() } } : { before: index() + 1 },
-                                  )}
+                                  {...target(`and-${index()}-${termIndex()}`, { andWith: { clause: index(), term: termIndex() } })}
                                 >
                                   {t().and}
                                 </span>
