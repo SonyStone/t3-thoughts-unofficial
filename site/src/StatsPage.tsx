@@ -30,10 +30,10 @@ function countBy<T>(list: T[], key: (item: T) => string): [string, number][] {
 type Bar = { label: JSX.Element; value: number; shown?: string; title?: string };
 
 /** Horizontal bars from one baseline, one hue; the value sits at the tip in text color. */
-function Bars(props: { rows: Bar[] }) {
+function Bars(props: { rows: Bar[]; stacked?: boolean }) {
   const max = () => Math.max(...props.rows.map((row) => row.value), 1);
   return (
-    <div class="bars">
+    <div class={{ bars: true, stacked: !!props.stacked }}>
       <For each={props.rows}>
         {(row) => (
           <div class="bar-row" title={row.title}>
@@ -49,9 +49,9 @@ function Bars(props: { rows: Bar[] }) {
   );
 }
 
-function Tile(props: { label: string; value: string | number; note?: string }) {
+function Figure(props: { label: string; value: string | number; note?: string }) {
   return (
-    <div class="stat-tile">
+    <div class="figure">
       <span class="stat-label">{props.label}</span>
       <span class="stat-value">{props.value}</span>
       <Show when={props.note}>
@@ -61,6 +61,7 @@ function Tile(props: { label: string; value: string | number; note?: string }) {
   );
 }
 
+/** A section of the page: a heading and its chart, divided from the next by a rule, not boxed. */
 function Panel(props: { title: string; note?: string; wide?: boolean; children: JSX.Element }) {
   return (
     <section class={{ panel: true, wide: !!props.wide }}>
@@ -83,19 +84,20 @@ function Hours(props: { hours: number[]; peak: number }) {
           {(count, hour) => (
             <div class={{ hour: true, peak: hour() === props.peak }} title={`${hour()}:00–${hour() + 1}:00 · ${count}`}>
               <Show when={hour() === props.peak}>
-                <span class="hour-value">{count}</span>
+                <span class="hour-value">{t().stats.posts(count)}</span>
               </Show>
               <span class="hour-bar" style={{ height: count ? `${(count / max()) * 100}%` : "0" }} />
             </div>
           )}
         </For>
       </div>
+      {/* ticks sit on the columns they name: the start of hours 0, 6, 12, 18 and the end of 23 */}
       <div class="hour-axis">
-        <span>0</span>
-        <span>6</span>
-        <span>12</span>
-        <span>18</span>
-        <span>24</span>
+        <span style={{ "grid-column": "1" }}>0</span>
+        <span style={{ "grid-column": "7" }}>6</span>
+        <span style={{ "grid-column": "13" }}>12</span>
+        <span style={{ "grid-column": "19" }}>18</span>
+        <span class="end" style={{ "grid-column": "24" }}>24</span>
       </div>
       <details class="as-table">
         <summary>{t().stats.asTable}</summary>
@@ -156,20 +158,21 @@ export default function StatsPage() {
         <h1>{s().title}</h1>
         <p class="muted">
           {formatDate(new Date(`${days[0]}T12:00:00`), { day: "numeric", month: "long" })} —{" "}
-          {formatDate(new Date(`${days.at(-1)}T12:00:00`), { day: "numeric", month: "long" })}, {s().days(days.length)}
+          {formatDate(new Date(`${days.at(-1)}T12:00:00`), { day: "numeric", month: "long" })} · {s().days(days.length)}
         </p>
       </header>
 
-      <div class="stat-tiles">
-        <Tile label={s().entries} value={entries.length} note={threads ? s().threads(threads) : undefined} />
-        <Tile label={s().seen} value={seen} note={s().keptShare(percent(items.length, seen))} />
-        <Tile label={s().topLikes} value={liked[0] ? formatCount(entryMetric(liked[0], "likes")) : "—"} note={s().onePost} />
-        <Tile label={s().peakHour} value={`${peak}:00`} note={zone} />
+      <div class="figures">
+        <Figure label={s().entries} value={entries.length} note={threads ? s().threads(threads) : undefined} />
+        <Figure label={s().seen} value={seen} note={s().keptShare(percent(items.length, seen))} />
+        <Figure label={s().topLikes} value={liked[0] ? formatCount(entryMetric(liked[0], "likes")) : "—"} />
+        <Figure label={s().peakHour} value={`${peak}:00`} note={zone} />
       </div>
 
       <div class="panels">
         <Panel title={s().top}>
           <Bars
+            stacked
             rows={liked.map((entry) => ({
               label: <a href={postHref(entry.latest.id)}>{localized(entry.latest, lang()).title}</a>,
               value: entryMetric(entry, "likes"),

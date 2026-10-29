@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { answersFeed, previous, type Entry, type ForeignPost, type Item, type Metrics } from "./content";
 import { formatCount, formatDate, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
@@ -40,18 +40,24 @@ function XText(props: { text: string; class?: string }) {
   );
 }
 
-/** X shows nobody's avatar without login, so people other than Theo get their initial. */
+/**
+ * X gives no avatars without login, so other people's come from unavatar.io by handle;
+ * when it has none, the initial stands in.
+ */
 function XAvatar(props: { post: ForeignPost; small?: boolean }) {
+  const [failed, setFailed] = createSignal(false);
+  const handle = () => props.post.author.replace(/^@/, "");
+  const src = () => (handle().toLowerCase() === "theo" ? avatar : `https://unavatar.io/x/${handle()}?fallback=false`);
   return (
     <Show
-      when={props.post.author.toLowerCase() === "@theo"}
+      when={!failed()}
       fallback={
         <span class={{ "x-avatar": true, initial: true, small: !!props.small }}>
-          {(props.post.name ?? props.post.author).replace(/^@/, "").slice(0, 1)}
+          {(props.post.name ?? handle()).slice(0, 1)}
         </span>
       }
     >
-      <img class={{ "x-avatar": true, small: !!props.small }} src={avatar} alt="" />
+      <img class={{ "x-avatar": true, small: !!props.small }} src={src()} loading="lazy" alt="" onError={() => setFailed(true)} />
     </Show>
   );
 }
@@ -84,6 +90,10 @@ function XHeader(props: { post: ForeignPost; at?: Date; href?: string }) {
   );
 }
 
+/**
+ * Media as pictures: a click anywhere opens the post on x.com. A video shows its first
+ * frame with X's play button and does not play here.
+ */
 function XMedia(props: { urls: string[] }) {
   return (
     <Show when={props.urls.length > 0}>
@@ -91,12 +101,18 @@ function XMedia(props: { urls: string[] }) {
         <For each={props.urls.slice(0, 4)}>
           {(url) =>
             VIDEO.test(url) ? (
-              <video src={url} controls muted playsinline preload="metadata" onClick={(event) => event.stopPropagation()} />
+              <div class="x-video">
+                {/* #t=0.1 makes the browser show a frame instead of black */}
+                <video src={`${url}#t=0.1`} muted playsinline preload="metadata" tabindex="-1" />
+                <span class="x-play" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M8 5.5v13l11-6.5z" fill="currentColor" />
+                  </svg>
+                </span>
+              </div>
             ) : (
-              <a href={url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-                {/* X refuses images to pages from other sites unless the referrer is left out */}
-                <img src={url} loading="lazy" referrerpolicy="no-referrer" alt="" />
-              </a>
+              // X refuses images to pages from other sites unless the referrer is left out
+              <img src={url} loading="lazy" referrerpolicy="no-referrer" alt="" />
             )
           }
         </For>
@@ -105,39 +121,74 @@ function XMedia(props: { urls: string[] }) {
   );
 }
 
-const ACTIONS: [IconName, keyof Metrics | undefined][] = [
-  ["reply", "replies"],
-  ["repost", "reposts"],
-  ["like", "likes"],
-  ["views", "views"],
+/** Opens a post on x.com, as a link would; links inside the post keep their own targets. */
+function openOnX(url: string | undefined) {
+  return {
+    role: "link" as const,
+    tabindex: "0",
+    onClick: (event: MouseEvent) => {
+      event.stopPropagation();
+      if (url && !(event.target as HTMLElement).closest("a, button")) window.open(url, "_blank", "noopener");
+    },
+    onKeyDown: (event: KeyboardEvent) => {
+      if (event.key !== "Enter" || !url || event.target !== event.currentTarget) return;
+      event.stopPropagation();
+      window.open(url, "_blank", "noopener");
+    },
+  };
+}
+
+const STATUS_ID = /\/status\/(\d+)/;
+
+/** Each action opens X's own page for it, so a click does what the icon promises. */
+const ACTIONS: [IconName, keyof Metrics | undefined, (id: string) => string][] = [
+  ["reply", "replies", (id) => `https://x.com/intent/tweet?in_reply_to=${id}`],
+  ["repost", "reposts", (id) => `https://x.com/intent/retweet?tweet_id=${id}`],
+  ["like", "likes", (id) => `https://x.com/intent/like?tweet_id=${id}`],
+  ["views", "views", (id) => `https://x.com/i/status/${id}`],
 ];
 
+async function share(url: string) {
+  if (navigator.share) await navigator.share({ url }).catch(() => undefined);
+  else await navigator.clipboard?.writeText(url);
+}
+
 /** The action bar: counts as X shows them; the moment they were taken is in the tooltip. */
-function XActions(props: { metrics?: Metrics }) {
+function XActions(props: { metrics?: Metrics; url?: string }) {
+  const id = () => props.url?.match(STATUS_ID)?.[1];
   const asOf = () =>
     props.metrics ? t().metrics.asOf(formatDate(new Date(props.metrics.capturedAt), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : undefined;
+  const stop = (event: MouseEvent) => event.stopPropagation();
   return (
     <div class="x-actions" title={asOf()}>
       <For each={ACTIONS}>
-        {([icon, key]) => {
+        {([icon, key, href]) => {
           const value = () => (key && props.metrics ? (props.metrics[key] as number | undefined) : undefined);
           return (
-            <span class="x-action" data-action={icon}>
+            <a class="x-action" data-action={icon} href={id() ? href(id()!) : props.url} target="_blank" rel="noreferrer" aria-label={icon} onClick={stop}>
               <Icon name={icon} />
               <Show when={value() !== undefined && value()! > 0}>
                 <span>{formatCount(value()!)}</span>
               </Show>
-            </span>
+            </a>
           );
         }}
       </For>
       <span class="x-action-end">
-        <span class="x-action">
+        <a class="x-action" data-action="bookmark" href={props.url} target="_blank" rel="noreferrer" aria-label="bookmark" onClick={stop}>
           <Icon name="bookmark" />
-        </span>
-        <span class="x-action">
+        </a>
+        <button
+          class="x-action"
+          data-action="share"
+          aria-label="share"
+          onClick={(event) => {
+            stop(event);
+            if (props.url) void share(props.url);
+          }}
+        >
           <Icon name="share" />
-        </span>
+        </button>
       </span>
     </div>
   );
@@ -166,9 +217,20 @@ function XQuote(props: { post: ForeignPost | "unavailable" }) {
 }
 
 /** One post in a conversation: avatar column with the thread line, then the post. */
-function XStep(props: { post: ForeignPost; at?: Date; href?: string; line: boolean; text?: string; media?: string[]; metrics?: Metrics; above?: string; children?: any }) {
+function XStep(props: {
+  post: ForeignPost;
+  at?: Date;
+  href?: string;
+  line: boolean;
+  text?: string;
+  media?: string[];
+  metrics?: Metrics;
+  above?: string;
+  focused?: boolean;
+  children?: any;
+}) {
   return (
-    <article class={{ "x-post": true, threaded: props.line }}>
+    <article class={{ "x-post": true, threaded: props.line, focused: !!props.focused }} {...openOnX(props.href)}>
       <Show when={props.above}>
         <div class="x-social">
           <Icon name="repost" />
@@ -182,17 +244,34 @@ function XStep(props: { post: ForeignPost; at?: Date; href?: string; line: boole
         </Show>
       </div>
       <div class="x-body">
-        <XHeader post={props.post} at={props.at} href={props.href} />
+        <XHeader post={props.post} at={props.focused ? undefined : props.at} href={props.href} />
         <Show when={props.text}>{(text) => <XText text={text()} />}</Show>
         <XMedia urls={props.media ?? []} />
         {props.children}
-        <XActions metrics={props.metrics} />
+        <Show when={props.focused && props.at}>
+          {(at) => (
+            <div class="x-stamp">
+              <a href={props.href} target="_blank" rel="noreferrer">
+                {formatDate(at(), { hour: "numeric", minute: "2-digit" })} · {formatDate(at(), { month: "short", day: "numeric", year: "numeric" })}
+              </a>
+              <Show when={props.metrics?.views}>
+                {(views) => (
+                  <>
+                    {" · "}
+                    <strong>{formatCount(views())}</strong> {t().xViews}
+                  </>
+                )}
+              </Show>
+            </div>
+          )}
+        </Show>
+        <XActions metrics={props.metrics} url={props.href} />
       </div>
     </article>
   );
 }
 
-function TheoPost(props: { item: Item; prev?: Item; line: boolean }) {
+function TheoPost(props: { item: Item; prev?: Item; line: boolean; focused?: boolean }) {
   const quotesPrev = () => props.prev !== undefined && previous(props.item) === props.prev && !!props.item.quoted;
   const original = () =>
     props.item.kind === "repost" && props.item.quoted && props.item.quoted !== "unavailable" ? props.item.quoted : undefined;
@@ -200,7 +279,16 @@ function TheoPost(props: { item: Item; prev?: Item; line: boolean }) {
     <Show
       when={original()}
       fallback={
-        <XStep post={THEO} at={props.item.createdAt} href={props.item.url} line={props.line} text={props.item.text} media={props.item.media} metrics={props.item.metrics}>
+        <XStep
+          post={THEO}
+          at={props.item.createdAt}
+          href={props.item.url}
+          line={props.line}
+          focused={props.focused}
+          text={props.item.text}
+          media={props.item.media}
+          metrics={props.item.metrics}
+        >
           <Show when={props.item.quoted}>
             {(quoted) => (
               <Show when={!quotesPrev()} fallback={<p class="x-note">{t().quotesAbove}</p>}>
@@ -246,7 +334,7 @@ export function XThread(props: { entry: Entry }) {
                   </Show>
                 )}
               </Show>
-              <TheoPost item={item} prev={props.entry.items[index() - 1]} line={!last()} />
+              <TheoPost item={item} prev={props.entry.items[index() - 1]} line={!last()} focused={last()} />
             </>
           );
         }}
@@ -269,7 +357,7 @@ export function XCompact(props: { item: Item; lines?: number }) {
     <div class="x-card compact" style={{ "--x-lines": String(props.lines ?? 6) }}>
       <Show when={parent()}>
         {(post) => (
-          <div class="x-context">
+          <div class="x-context" {...openOnX(post().url)}>
             <span>{t().replyingTo}</span> <a href={post().url} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>{post().author}</a>
             <Show when={post().text}>
               {(text) => <span class="x-context-text">{text()}</span>}

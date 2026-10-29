@@ -6,10 +6,13 @@ import { currentQuery, route, setQuery } from "./route";
 import { relatedTags, similarTags } from "./search";
 import { describe, namespaceKey, Tag, TagLabel } from "./Tag";
 
-type Open = { tag: string; x: number; y: number };
+/** The menu hangs off the tag it was opened on: `above`/`below` are that tag's edges. */
+type Open = { tag: string; x: number; above: number; below: number };
+type Placement = { top: number; maxHeight?: number };
 
 const [menu, setMenu] = createSignal<Open | undefined>();
-const [top, setTop] = createSignal(0);
+const [placement, setPlacement] = createSignal<Placement | undefined>();
+const GAP = 6;
 
 const WIDTH = 340;
 
@@ -17,8 +20,14 @@ const WIDTH = 340;
 export function openTagMenu(event: MouseEvent, tag: string) {
   event.preventDefault();
   event.stopPropagation();
-  setTop(0);
-  setMenu({ tag, x: Math.max(8, Math.min(event.clientX, window.innerWidth - WIDTH - 8)), y: event.clientY });
+  const rect = (event.currentTarget as HTMLElement | null)?.getBoundingClientRect();
+  setPlacement(undefined);
+  setMenu({
+    tag,
+    x: Math.max(8, Math.min(rect?.left ?? event.clientX, window.innerWidth - WIDTH - 8)),
+    above: rect?.top ?? event.clientY,
+    below: rect?.bottom ?? event.clientY,
+  });
 }
 
 const ACTIONS: TagAction[] = ["and", "or", "exclude", "only", "remove"];
@@ -101,21 +110,30 @@ export default function TagMenu() {
   const related = createMemo(() => (menu() ? relatedTags(menu()!.tag, 10).filter(([tag]) => !hasTag(route().q, tag)).slice(0, 6) : []));
   const similar = createMemo(() => (menu() ? similarTags(menu()!.tag) : []));
 
-  // keep the panel on screen: below the pointer when it fits, above otherwise
+  // below the tag when it fits; otherwise on the side with more room, never over the tag, scrolling if need be
   const place = (el: HTMLDivElement) => {
     panel = el;
     queueMicrotask(() => {
       const open = menu();
       if (!open || !panel) return;
-      const height = panel.offsetHeight;
-      setTop(open.y + height + 8 > window.innerHeight ? Math.max(8, open.y - height) : open.y);
+      const height = panel.scrollHeight;
+      const room = { below: window.innerHeight - open.below - GAP - 8, above: open.above - GAP - 8 };
+      if (height <= room.below) setPlacement({ top: open.below + GAP });
+      else if (room.below >= room.above) setPlacement({ top: open.below + GAP, maxHeight: room.below });
+      else setPlacement({ top: Math.max(8, open.above - GAP - height), maxHeight: room.above });
     });
   };
 
   return (
     <Show when={menu()}>
       {(open) => (
-        <div class="tag-menu" role="menu" ref={place} style={{ left: `${open().x}px`, top: `${top() || open().y}px`, width: `${WIDTH}px` }}>
+        <div class="tag-menu" role="menu" ref={place} style={{
+            left: `${open().x}px`,
+            top: `${placement()?.top ?? open().below + GAP}px`,
+            "max-height": placement()?.maxHeight ? `${placement()!.maxHeight}px` : undefined,
+            visibility: placement() ? "visible" : "hidden",
+            width: `${WIDTH}px`,
+          }}>
           <div class="tag-menu-head">
             <span class="chip" data-ns={namespaceKey(open().tag)}>
               <TagLabel tag={open().tag} />

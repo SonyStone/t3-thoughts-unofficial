@@ -189,18 +189,26 @@ a {
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
 }
 
-.lang-list li {
+.lang-list button {
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
   padding: 8px 10px;
+  border: 0;
   border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
   font-size: 0.92rem;
+  text-align: left;
   cursor: pointer;
 }
 
-.lang-list li:hover {
+.lang-list button:hover,
+.lang-list button:focus-visible {
   background: rgba(255, 255, 255, 0.07);
+  outline: none;
 }
 
 .lang-list .icon {
@@ -222,7 +230,7 @@ a {
   position: relative;
   width: min(100%, 1680px);
   margin: 0 auto;
-  aspect-ratio: 2.6;
+  aspect-ratio: 2.4;
   overflow: hidden;
   container-type: inline-size;
   background: var(--bg);
@@ -303,6 +311,11 @@ main.on-hero {
   margin: 0 -24px;
   padding: 12px 24px;
   border-bottom: 1px solid transparent;
+}
+
+.bar.stuck,
+main:not(.on-hero) .bar {
+  padding-right: max(24px, calc(250px - (100vw - 1228px) / 2));
 }
 
 .bar.stuck {
@@ -437,14 +450,18 @@ main.on-hero {
   margin-right: -7px;
 }
 
-.chip.neg {
-  border-style: dashed;
-  color: var(--muted);
-}
-
 .chip.neg .tag-name {
   text-decoration: line-through;
   text-decoration-color: #e66767;
+  text-decoration-thickness: 2px;
+}
+
+
+.chip.neg > :first-child::before {
+  content: "−";
+  margin-right: 4px;
+  color: #e66767;
+  font-weight: 700;
 }
 
 .chip.neg::before {
@@ -701,6 +718,20 @@ main.on-hero {
   border-color: var(--accent);
 }
 
+/* a tag the search excludes: struck out wherever it shows */
+.tag.excluded {
+  color: var(--muted);
+}
+
+.tag.excluded::before {
+  background: #e66767;
+}
+
+.tag.excluded .tag-name {
+  text-decoration: line-through;
+  text-decoration-color: #e66767;
+}
+
 .tag-ns {
   margin-right: -6px;
   color: var(--muted);
@@ -722,6 +753,8 @@ main.on-hero {
 .tag-menu {
   position: fixed;
   z-index: 30;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   gap: 4px;
   padding: 6px;
@@ -873,34 +906,39 @@ main.on-hero {
 .tiles {
   display: flex;
   align-items: flex-start;
-  gap: 20px;
+  gap: 32px;
 }
 
 .tile-column {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   min-width: 0;
 }
 
+/* an entry is not a card: the X post is the only framed thing, a rule separates entries */
 .tile,
 .row {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
   overflow-wrap: anywhere;
   cursor: pointer;
 }
 
-.tile:hover,
+.tile + .tile {
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
 .tile:focus-visible,
-.row:hover,
 .row:focus-visible {
-  border-color: var(--line-strong);
-  background: #1a1720;
-  outline: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 6px;
+  border-radius: 4px;
+}
+
+.tile:hover .entry-title a,
+.row:hover .entry-title a {
+  color: var(--accent);
 }
 
 .tile[data-weight="1"],
@@ -936,14 +974,15 @@ main.on-hero {
 
 .rows {
   display: grid;
-  gap: 16px;
+  border-top: 1px solid var(--line);
 }
 
 .row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-  gap: 28px;
-  padding: 20px 22px;
+  gap: 32px;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .row .entry-title {
@@ -962,6 +1001,15 @@ main.on-hero {
 
 /* A post as x.com draws it in the dark theme */
 
+.x-post:hover {
+  background: #080808;
+}
+
+.x-post:focus-visible {
+  outline: 2px solid var(--x-blue);
+  outline-offset: -2px;
+}
+
 .x-card {
   overflow: hidden;
   border: 1px solid var(--x-line);
@@ -974,12 +1022,9 @@ main.on-hero {
   cursor: auto;
 }
 
-.tile .x-card,
-.row .x-card {
-  cursor: pointer;
-}
-
+/* a post works like a picture of itself: a click opens it on x.com */
 .x-post {
+  cursor: pointer;
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
   column-gap: 8px;
@@ -1015,6 +1060,7 @@ main.on-hero {
   display: grid;
   place-items: center;
   flex: none;
+  background: #3e4144;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -1127,6 +1173,35 @@ a.x-name:hover,
   aspect-ratio: 1;
 }
 
+.x-video {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: #000;
+}
+
+.x-video video {
+  pointer-events: none;
+}
+
+.x-play {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border: 4px solid #fff;
+  border-radius: 50%;
+  background: var(--x-blue);
+  color: #fff;
+}
+
+.x-play svg {
+  width: 28px;
+  height: 28px;
+  margin-left: 3px;
+}
+
 .x-quote {
   display: block;
   margin-top: 12px;
@@ -1171,6 +1246,26 @@ a.x-name:hover,
   align-items: center;
   gap: 4px;
   min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* X's hover colors: blue for most, green for repost, pink for like */
+.x-action:hover {
+  color: var(--x-blue);
+}
+
+.x-action[data-action="repost"]:hover {
+  color: #00ba7c;
+}
+
+.x-action[data-action="like"]:hover {
+  color: #f91880;
 }
 
 .x-action .icon {
@@ -1194,6 +1289,75 @@ a.x-name:hover,
 
 /* in a tile there is no room for the right-hand pair; X drops it on narrow screens too */
 .x-card.compact .x-action-end {
+  display: none;
+}
+
+/* the post a page is about: larger text, the full time under it, the bar between rules */
+.x-post.focused .x-text {
+  margin-top: 12px;
+  font-size: 17px;
+  line-height: 24px;
+}
+
+.x-post.focused {
+  grid-template-columns: 40px minmax(0, 1fr);
+}
+
+.x-post.focused .x-side {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.x-post.focused .x-body {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding-left: 48px;
+}
+
+.x-post.focused .x-text,
+.x-post.focused .x-media,
+.x-post.focused .x-quote,
+.x-post.focused .x-stamp,
+.x-post.focused .x-actions {
+  margin-left: -48px;
+}
+
+.x-post.focused .x-head {
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 40px;
+}
+
+.x-stamp {
+  margin-top: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--x-line);
+  color: var(--x-muted);
+}
+
+.x-stamp a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.x-stamp a:hover {
+  text-decoration: underline;
+}
+
+.x-stamp strong {
+  color: var(--x-text);
+}
+
+.x-post.focused .x-actions {
+  margin-top: 4px;
+  margin-bottom: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--x-line);
+}
+
+.x-post.focused .x-actions + * {
   display: none;
 }
 
@@ -1295,6 +1459,11 @@ a.x-name:hover,
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+.post-page {
+  background: var(--bg);
+  box-shadow: 0 0 0 40px var(--bg);
 }
 
 .post-page .analysis {
@@ -1425,7 +1594,7 @@ a.x-name:hover,
 
 .tag-rows li {
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 120px 28px;
+  grid-template-columns: 250px minmax(0, 1fr) 40px;
   align-items: center;
   gap: 16px;
   padding: 8px 0;
@@ -1452,20 +1621,6 @@ a.x-name:hover,
   font-size: 0.9rem;
 }
 
-.tag-freq {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--panel-2);
-}
-
-.tag-freq-bar {
-  display: block;
-  height: 100%;
-  min-width: 4px;
-  border-radius: 3px;
-  background: var(--ns, var(--muted));
-}
-
 .tag-freq-count {
   color: var(--text-2);
   font-family: var(--mono);
@@ -1474,26 +1629,29 @@ a.x-name:hover,
   text-align: right;
 }
 
-/* Stats page: four figures on top, then panels of bars */
+/* Stats page: four figures in one ruled strip, then sections of bars divided by rules */
 
-.stat-tiles {
+.figures {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
   margin-top: 28px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
 }
 
-.stat-tile,
-.panel {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-}
-
-.stat-tile {
+.figure {
   display: grid;
+  align-content: start;
   gap: 4px;
-  padding: 18px 20px;
+  padding: 18px 24px;
+}
+
+.figure:first-child {
+  padding-left: 0;
+}
+
+.figure + .figure {
+  border-left: 1px solid var(--line);
 }
 
 .stat-label {
@@ -1515,12 +1673,13 @@ a.x-name:hover,
 .panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 16px;
+  align-items: start;
+  column-gap: 56px;
 }
 
 .panel {
-  padding: 20px 22px 22px;
+  padding: 28px 0 8px;
+  border-bottom: 1px solid var(--line);
 }
 
 .panel h3 {
@@ -1561,6 +1720,20 @@ a.x-name:hover,
   font-size: 0.92rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* long labels (post titles) take their own line, the bar runs under them */
+.bars.stacked .bar-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+
+.bars.stacked .bar-label {
+  white-space: normal;
+}
+
+.bars.stacked {
+  gap: 14px;
 }
 
 .bar-label a:not(.tag) {
@@ -1659,17 +1832,27 @@ a.x-name:hover,
 
 .hour-value {
   margin-bottom: 4px;
+  color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.75rem;
 }
 
 .hour-axis {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 2px;
   margin-top: 6px;
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.75rem;
+}
+
+.hour-axis .end {
+  justify-self: end;
+}
+
+.hour-value {
+  white-space: nowrap;
 }
 
 .as-table {
@@ -1890,8 +2073,17 @@ footer {
     gap: 16px;
   }
 
-  .stat-tiles {
+  .figures {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .figure:nth-child(3) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .figure:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
   }
 
   .panels {
@@ -1920,27 +2112,9 @@ footer {
     --bar-height: 76px;
   }
 
-  .hero-frame {
-    aspect-ratio: 4 / 3;
-  }
-
-  .hero-media {
-    object-position: 47% 0;
-  }
-
-  .hero-text {
-    left: 5%;
-    right: 5%;
-    top: 56%;
-  }
-
-  .hero h1 {
-    font-size: 10cqw;
-  }
-
+  /* the frame keeps its proportions here too; only the tagline has a floor to stay readable */
   .hero p {
-    margin-top: 1.5cqw;
-    font-size: max(0.85rem, 3.6cqw);
+    font-size: max(0.72rem, 1.4cqw);
   }
 
   .topnav {
@@ -2010,6 +2184,18 @@ footer {
     gap: 6px;
   }
 
+  .hero-cloud .cloud-tags {
+    flex-wrap: nowrap;
+    margin: 0 -12px;
+    padding: 0 12px 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .hero-cloud .cloud-label {
+    padding-top: 0;
+  }
+
   .results {
     margin-top: 28px;
   }
@@ -2022,10 +2208,6 @@ footer {
     padding: 4px 8px;
   }
 
-  .tile,
-  .row {
-    padding: 14px;
-  }
 
   .x-post {
     padding: 12px 12px 0;
@@ -2048,21 +2230,14 @@ footer {
     font-size: 1.5rem;
   }
 
-  .stat-tiles {
-    gap: 10px;
-  }
-
-  .stat-tile {
-    padding: 14px;
+  .figure {
+    padding: 14px 16px;
   }
 
   .stat-value {
     font-size: 1.7rem;
   }
 
-  .panel {
-    padding: 16px;
-  }
 
   .bar-row {
     grid-template-columns: minmax(0, 1fr);
@@ -2070,7 +2245,7 @@ footer {
   }
 
   .tag-rows li {
-    grid-template-columns: minmax(0, 1fr) 70px 24px;
+    grid-template-columns: minmax(0, 1fr) 32px;
     gap: 10px;
   }
 

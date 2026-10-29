@@ -133,7 +133,7 @@ function PostPage() {
             <Show when={relatedEntries(open()).length > 0}>
               <section class="related">
                 <h2 class="section-label">{t().related}</h2>
-                <Tiles entries={relatedEntries(open())} />
+                <List entries={relatedEntries(open())} />
               </section>
             </Show>
           </>
@@ -195,6 +195,19 @@ function Feed() {
 function LangMenu() {
   const [open, setOpen] = createSignal(false);
   let box: HTMLDivElement | undefined;
+  let button: HTMLButtonElement | undefined;
+  // arrows move between languages, Escape closes and gives focus back to the button
+  const onListKey = (event: KeyboardEvent) => {
+    const options = [...(box?.querySelectorAll<HTMLButtonElement>(".lang-list button") ?? [])];
+    const index = options.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      options[(index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length]?.focus();
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      button?.focus();
+    }
+  };
   onSettled(() => {
     const close = (event: Event) => !box?.contains(event.target as Node) && setOpen(false);
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
@@ -207,28 +220,30 @@ function LangMenu() {
   });
   return (
     <div class="lang" ref={(el) => (box = el)}>
-      <button class="lang-button" aria-haspopup="listbox" aria-expanded={open() ? "true" : "false"} onClick={() => setOpen(!open())}>
+      <button class="lang-button" ref={(el) => (button = el)} aria-haspopup="listbox" aria-expanded={open() ? "true" : "false"} onClick={() => setOpen(!open())}>
         {lang().toUpperCase()}
         <Icon name="chevron" />
       </button>
       <Show when={open()}>
-        <ul class="lang-list" role="listbox">
+        <ul class="lang-list" role="listbox" onKeyDown={onListKey}>
           <For each={LANGS}>
             {(code) => (
-              <li
-                role="option"
-                aria-selected={lang() === code ? "true" : "false"}
-                class={{ current: lang() === code }}
-                onClick={() => {
-                  setLang(code);
-                  setOpen(false);
-                }}
-              >
-                <span class="lang-code">{code.toUpperCase()}</span>
-                {LANG_NAMES[code]}
-                <Show when={lang() === code}>
-                  <Icon name="check" />
-                </Show>
+              <li role="option" aria-selected={lang() === code ? "true" : "false"}>
+                <button
+                  class={{ current: lang() === code }}
+                  ref={(el) => lang() === code && queueMicrotask(() => el.focus())}
+                  onClick={() => {
+                    setLang(code);
+                    setOpen(false);
+                    button?.focus();
+                  }}
+                >
+                  <span class="lang-code">{code.toUpperCase()}</span>
+                  {LANG_NAMES[code]}
+                  <Show when={lang() === code}>
+                    <Icon name="check" />
+                  </Show>
+                </button>
               </li>
             )}
           </For>

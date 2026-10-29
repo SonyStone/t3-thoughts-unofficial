@@ -9,7 +9,7 @@ import { XCompact } from "./XPost";
 
 const DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" };
 const COLUMN = 380;
-const GAP = 20;
+const GAP = 32;
 const TAGS_ON_TILE = 5;
 
 /** A rough height in pixels, enough to keep columns even without measuring the DOM. */

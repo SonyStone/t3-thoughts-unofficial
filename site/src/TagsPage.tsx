@@ -6,7 +6,6 @@ import { describe, NAMESPACES, namespaceKey, Tag } from "./Tag";
 
 type Order = "count" | "name";
 
-const max = Math.max(...tagCounts.map(([, count]) => count), 1);
 const bareName = (tag: string) => tag.slice(tag.indexOf(":") + 1);
 
 /**
@@ -100,9 +99,6 @@ export default function TagsPage() {
                           <li>
                             <Tag tag={tag} />
                             <span class="tag-about">{describe(vocabulary.tags[tag]) ?? ""}</span>
-                            <span class="tag-freq" title={String(count)}>
-                              <span class="tag-freq-bar" style={{ width: `${(count / max) * 100}%` }} />
-                            </span>
                             <span class="tag-freq-count">{count}</span>
                           </li>
                         )}

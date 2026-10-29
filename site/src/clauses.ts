@@ -136,3 +136,8 @@ export function editTerm(query: string, at: { clause: number; term: number }, ch
   });
   return toQuery(clauses.filter((c) => "raw" in c || c.terms.length > 0));
 }
+
+/** Whether the query excludes this tag on its own (`-tag` as a clause). */
+export function excludesTag(query: string, tag: string): boolean {
+  return toClauses(query).some((c) => !("raw" in c) && c.terms.length === 1 && c.terms[0].neg && same(c.terms[0].raw, tag));
+}

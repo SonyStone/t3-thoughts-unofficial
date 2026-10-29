@@ -2,7 +2,7 @@ import { Show } from "solid-js";
 import { vocabulary } from "virtual:content";
 import type { Described } from "./types";
 import { lang } from "./i18n";
-import { applyTag, hasTag } from "./clauses";
+import { applyTag, excludesTag, hasTag } from "./clauses";
 import { feedHref, route } from "./route";
 import { endDrag, startDrag } from "./drag";
 import { openTagMenu } from "./TagMenu";
@@ -47,7 +47,7 @@ export function TagLabel(props: { tag: string }) {
 export function Tag(props: { tag: string; count?: number }) {
   return (
     <a
-      class={{ tag: true, active: hasTag(route().q, props.tag) }}
+      class={{ tag: true, active: hasTag(route().q, props.tag), excluded: excludesTag(route().q, props.tag) }}
       data-ns={namespaceKey(props.tag)}
       href={feedHref(applyTag(route().q, props.tag, "and"))}
       title={describe(vocabulary.tags[props.tag])}
