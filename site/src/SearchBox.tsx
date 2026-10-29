@@ -49,6 +49,30 @@ export default function SearchBox(props: { stuck: boolean }) {
   const showCloud = () => focused() && props.stuck && !draft().trim();
 
   /** Known terms become chips of their own; anything else is one text search chip. */
+  /**
+   * The caret among the chips: how many clauses stand before the text field. Arrows move it,
+   * new terms go in there. Undefined means after the last chip.
+   */
+  const [caret, setCaret] = createSignal<number | undefined>();
+  const caretAt = () => Math.min(caret() ?? clauses().length, clauses().length);
+
+  /** Sets a query whose new clauses were added at the end, moving them to the caret. */
+  const insert = (next: string) => {
+    const at = caret();
+    const before = toClauses(currentQuery()).length;
+    const list = toClauses(next);
+    const added = Math.max(0, list.length - before);
+    if (at === undefined || added === 0 || at >= list.length - added) {
+      setQuery(next);
+      return;
+    }
+    const tail = list.splice(list.length - added, added);
+    list.splice(at, 0, ...tail);
+    setQuery(toQuery(list));
+    setCaret(at + added);
+  };
+
+  /** Known terms become chips of their own; anything else is one text search chip. */
   const commit = (text: string) => {
     const value = text.trim().replace(/,$/, "").trim();
     if (!value) return;
@@ -59,28 +83,44 @@ export default function SearchBox(props: { stuck: boolean }) {
       return;
     }
     // a negated word goes through the menu logic (no duplicates); other words join as their own clauses
-    setQuery(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
+    insert(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
     setDraft("");
     setActive(0);
   };
 
   const pick = (term: string) => {
     const negate = /^[-!]/.test(term) || /^[-!]/.test(draft());
-    setQuery(applyTag(currentQuery(), term.replace(/^[-!]/, ""), negate ? "exclude" : "and"));
+    insert(applyTag(currentQuery(), term.replace(/^[-!]/, ""), negate ? "exclude" : "and"));
     setDraft("");
     setActive(0);
     input?.focus();
   };
 
+  /** Takes a chip next to the caret back out of the query. */
+  const removeAt = (index: number) => setQuery(toQuery(clauses().filter((_, i) => i !== index)));
+
   const onKeyDown = (event: KeyboardEvent) => {
     const list = options();
     if (event.key === "Escape") {
       input?.blur();
-    } else if (event.key === "Backspace" && !draft() && clauses().length > 0) {
+    } else if (event.key === "Backspace" && !draft() && caretAt() > 0) {
+      // the chip before the caret comes back as text
       event.preventDefault();
-      const last = clauses().at(-1)!;
-      setQuery(toQuery(clauses().slice(0, -1)));
-      setDraft("raw" in last ? last.raw : toQuery([last]));
+      const index = caretAt() - 1;
+      const chip = clauses()[index];
+      removeAt(index);
+      setCaret(caret() === undefined ? undefined : index);
+      setDraft("raw" in chip ? chip.raw : toQuery([chip]));
+    } else if (event.key === "Delete" && !draft() && caretAt() < clauses().length) {
+      event.preventDefault();
+      removeAt(caretAt());
+    } else if (event.key === "ArrowLeft" && input?.selectionStart === 0 && input.selectionEnd === 0 && caretAt() > 0) {
+      event.preventDefault();
+      setCaret(caretAt() - 1);
+    } else if (event.key === "ArrowRight" && input?.selectionStart === draft().length && caretAt() < clauses().length) {
+      event.preventDefault();
+      const next = caretAt() + 1;
+      setCaret(next >= clauses().length ? undefined : next);
     } else if (list.length > 0 && event.key === "ArrowDown") {
       event.preventDefault();
       setActive((active() + 1) % list.length);
@@ -115,29 +155,54 @@ export default function SearchBox(props: { stuck: boolean }) {
 
   const place = (to: Target) => {
     const what = dragged();
+    const at = carried();
     setOver(undefined);
     endDrag();
     if (!what) return;
     const q = currentQuery();
-    if (what.kind === "tag") {
+    // a tag from the page that is already in the search moves that chip, like a chip would
+    if (what.kind === "tag" && !at) {
       if (to === "remove") return;
       if (to === "only") setQuery(what.tag);
       else setQuery(to === "negate" ? applyTag(q, what.tag, "exclude") : dropTag(q, what.tag, to));
       return;
     }
-    const at = { clause: what.clause, term: what.term };
-    if (to === "only") setQuery(`${what.neg ? "-" : ""}${what.raw}`);
+    if (!at) return;
+    const term = (clauses()[at.clause] as { terms: Term[] }).terms[at.term];
+    if (to === "only") setQuery(`${term.neg ? "-" : ""}${term.raw}`);
     else setQuery(to === "negate" || to === "remove" ? editTerm(q, at, to) : moveTerm(q, at, to));
   };
 
-  /** Whether the thing being dragged already is this clause, so joining it with itself means nothing. */
-  const carries = (index: number) => {
+  /**
+   * The chip in the search that is being carried: a chip dragged out of it, or a tag from
+   * the page that the search already has. It leaves the box while it is carried.
+   */
+  const carried = createMemo(() => {
     const what = dragged();
-    const clause = clauses()[index];
-    if (!what || !clause || "raw" in clause) return false;
-    if (what.kind === "chip") return what.clause === index && clause.terms.length === 1;
-    return clause.terms.some((term) => term.raw.toLowerCase() === what.tag.toLowerCase());
+    if (!what) return undefined;
+    if (what.kind === "chip") return { clause: what.clause, term: what.term };
+    for (const [index, clause] of clauses().entries()) {
+      if ("raw" in clause) continue;
+      const term = clause.terms.findIndex((each) => each.raw.toLowerCase() === what.tag.toLowerCase());
+      if (term >= 0) return { clause: index, term };
+    }
+    return undefined;
+  });
+  const isCarried = (clause: number, term: number) => lifted() && carried()?.clause === clause && carried()?.term === term;
+  /** Joining a chip with "or" means something only for chips other than the carried one's own group. */
+  const canJoin = (index: number) => !!dragged() && carried()?.clause !== index;
+
+  const carriedGroupSize = () => {
+    const at = carried();
+    const clause = at && clauses()[at.clause];
+    return clause && !("raw" in clause) ? clause.terms.length : 0;
   };
+  // only the zones that would change something
+  const showAdd = () => !carried() || carriedGroupSize() > 1;
+  const showOnly = () => clauses().length > (carried() && carriedGroupSize() === 1 ? 1 : 0);
+
+  // the carried chip disappears from the box just after the drag starts (hiding it at once would cancel the drag)
+  const [lifted, setLifted] = createSignal(false);
 
   // every drop place by its key, so a finger drag can find what is under it (data-drop)
   const targets = new Map<string, Target>();
@@ -165,21 +230,27 @@ export default function SearchBox(props: { stuck: boolean }) {
 
     // a chip carried out of the search box and let go there is taken out of the query
     const overPage = (event: DragEvent) => {
-      if (dragged()?.kind !== "chip" || !outside(event.clientX, event.clientY)) return;
+      if (!carried() || !outside(event.clientX, event.clientY)) return;
       event.preventDefault();
       setOver("outside");
     };
     const dropOnPage = (event: DragEvent) => {
-      if (dragged()?.kind !== "chip" || !outside(event.clientX, event.clientY)) return;
+      if (!carried() || !outside(event.clientX, event.clientY)) return;
       event.preventDefault();
       place("remove");
     };
+    const lift = () => setTimeout(() => setLifted(true), 0);
+    const settle = () => setLifted(false);
     window.addEventListener("dragover", overPage);
     window.addEventListener("drop", dropOnPage);
+    window.addEventListener("dragstart", lift, true);
+    window.addEventListener("dragend", settle, true);
     return () => {
       window.removeEventListener("keydown", focusShortcut);
       window.removeEventListener("dragover", overPage);
       window.removeEventListener("drop", dropOnPage);
+      window.removeEventListener("dragstart", lift, true);
+      window.removeEventListener("dragend", settle, true);
     };
   });
 
@@ -246,7 +317,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
       {...fingerDrag(chip)}
-      class={{ chip: true, neg: chip.term.neg }}
+      class={{ chip: true, neg: chip.term.neg, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
       draggable="true"
       onDragStart={(event) => startDrag(event, { kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg })}
@@ -273,37 +344,44 @@ export default function SearchBox(props: { stuck: boolean }) {
     <div class={{ search: true, focused: focused(), dragging: !!dragged() }} ref={(el) => (root = el)}>
       <div
         class={{ "search-field": true, over: over() === "field" }}
-        onClick={() => input?.focus()}
+        onClick={(event) => {
+          // a click on the empty part of the box puts the caret after the last chip
+          if (event.target === event.currentTarget) setCaret(undefined);
+          input?.focus();
+        }}
         {...target("field", { before: clauses().length })}
       >
+        {/* flex order keeps the one text field where the caret is, between chips, without remounting it */}
         <Icon name="search" class="search-icon" />
         <For each={clauses()}>
           {(clause: Clause, index) => (
             <>
               <Show
                 when={!("raw" in clause) && clause}
-                fallback={<span class="chip raw">{(clause as { raw: string }).raw}</span>}
+                fallback={
+                  <span class="chip raw" style={{ order: 2 * index() + 2 }}>
+                    {(clause as { raw: string }).raw}
+                  </span>
+                }
               >
                 {(group) => (
                   <span
                     class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
+                    style={{ order: 2 * index() + 2 }}
                   >
                     <For each={group().terms}>
                       {(term, termIndex) => (
                         <>
-                          <Show when={termIndex() > 0}>
+                          <Show when={termIndex() > 0 && !isCarried(index(), termIndex())}>
                             <span class="chip-op">{t().or}</span>
                           </Show>
                           <TermChip term={term} clause={index()} index={termIndex()} />
                         </>
                       )}
                     </For>
-                    {/* above a chip: add next to it ("and"); below it: join it ("or"). Not on the chip being carried. */}
-                    <Show when={dragged() && !carries(index())}>
-                      <span class={{ flyout: true, and: true, over: over() === `after-${index()}` }} {...target(`after-${index()}`, { before: index() + 1 })}>
-                        {t().drop.and}
-                      </span>
-                      <span class={{ flyout: true, or: true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
+                    {/* a tab hanging under the chip: dropped there, the tag joins it with "or" */}
+                    <Show when={canJoin(index())}>
+                      <span class={{ "or-tab": true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
                         {t().drop.or}
                       </span>
                     </Show>
@@ -314,6 +392,8 @@ export default function SearchBox(props: { stuck: boolean }) {
           )}
         </For>
         <input
+          style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `${Math.max(2, draft().length + 1)}ch` : undefined }}
+          class={{ inside: caretAt() < clauses().length }}
           ref={(el) => (input = el)}
           type="text"
           placeholder={clauses().length ? "" : t().searchPlaceholder}
@@ -324,6 +404,7 @@ export default function SearchBox(props: { stuck: boolean }) {
           onInput={(event) => onInput(event.currentTarget.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => {
+            setCaret(undefined);
             setFocused(false);
             commit(draft());
           }}
@@ -332,16 +413,20 @@ export default function SearchBox(props: { stuck: boolean }) {
         {/* while something is dragged, the free part of the box becomes big zones, one per action */}
         <Show when={dragged()}>
           <span class="drop-board">
-            <span class={{ "drop-zone": true, over: over() === "add" }} {...target("add", { before: clauses().length })}>
-              <b>+</b> {t().drop.add}
-            </span>
+            <Show when={showAdd()}>
+              <span class={{ "drop-zone": true, add: true, over: over() === "add" }} {...target("add", { before: clauses().length })}>
+                <b>+</b> {t().drop.add}
+              </span>
+            </Show>
             <span class={{ "drop-zone": true, negate: true, over: over() === "negate" }} {...target("negate", "negate")}>
               <b>−</b> {t().drop.negate}
             </span>
-            <span class={{ "drop-zone": true, over: over() === "only" }} {...target("only", "only")}>
-              <b>=</b> {t().drop.only}
-            </span>
-            <Show when={dragged()?.kind === "chip"}>
+            <Show when={showOnly()}>
+              <span class={{ "drop-zone": true, over: over() === "only" }} {...target("only", "only")}>
+                <b>=</b> {t().drop.only}
+              </span>
+            </Show>
+            <Show when={carried()}>
               <span class={{ "drop-hint": true, out: over() === "outside" }}>{over() === "outside" ? t().drop.release : t().drop.out}</span>
             </Show>
           </span>
@@ -381,12 +466,13 @@ export default function SearchBox(props: { stuck: boolean }) {
                       pick(tag);
                     }}
                   >
-                    <span>{tag}</span>
+                    {/* the text option reads as an action, not as one more tag */}
+                    <Show when={/^-?text:/.test(tag)} fallback={<span>{tag}</span>}>
+                      <span class="suggest-text">{t().searchFor(tag.replace(/^-?text:"|"$/g, ""))}</span>
+                      <kbd class="search-kbd">Enter</kbd>
+                    </Show>
                     <Show when={count >= 0}>
                       <span class="tag-count">{count}</span>
-                    </Show>
-                    <Show when={/^-?text:/.test(tag)}>
-                      <span class="tag-count">{t().searchText}</span>
                     </Show>
                   </li>
                 )}

@@ -289,7 +289,7 @@ a {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(0deg, rgba(13, 11, 16, 0.6) 0%, transparent 36%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(13, 11, 16, 0.55) 24%, transparent 52%),
     linear-gradient(180deg, rgba(13, 11, 16, 0.55) 0%, transparent 20%);
 }
 
@@ -419,6 +419,22 @@ main.on-hero {
   color: var(--text);
   font: inherit;
   font-size: 1.2rem;
+}
+
+/* between chips the text field is only as wide as what is typed */
+.search-field input.inside {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.search-icon {
+  order: -1;
+}
+
+.drop-board,
+.search-clear,
+.search-kbd {
+  order: 9999;
 }
 
 .search-field input::placeholder {
@@ -588,6 +604,11 @@ main.on-hero {
   flex: 1;
 }
 
+/* adding is what a drag is for most of the time, so it gets most of the room */
+.drop-zone.add {
+  flex: 3;
+}
+
 .drop-board > :last-child {
   border-radius: 0 15px 15px 0;
 }
@@ -621,37 +642,47 @@ main.on-hero {
   border-color: #e66767;
 }
 
-/* above and below each chip while dragging: "and" next to it, "or" with it */
-.flyout {
+/* a tab hanging from under each chip while dragging, out of the box: drop here for "or" */
+.or-tab {
   position: absolute;
-  left: 50%;
+  top: calc(100% - 1px);
+  left: 0;
   z-index: 6;
   display: grid;
-  place-items: center;
-  min-width: max(100%, 96px);
-  height: 42px;
-  transform: translateX(-50%);
+  place-items: end center;
+  width: 100%;
+  min-width: 64px;
+  height: calc(var(--pad-y) + 40px);
+  padding-bottom: 10px;
   border: 1px dashed var(--muted);
-  border-radius: 10px;
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
   background: rgba(23, 20, 28, 0.96);
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.85rem;
 }
 
-.flyout.and {
-  bottom: calc(100% + var(--pad-y) + 8px);
+.clause:has(.or-tab) .chip {
+  border-color: var(--muted);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
-.flyout.or {
-  top: calc(100% + var(--pad-y) + 8px);
-}
-
-.flyout.over {
+.or-tab.over {
   border-style: solid;
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 22%, var(--panel));
   color: var(--text);
+}
+
+.clause:has(.or-tab.over) .chip {
+  border-color: var(--accent);
+}
+
+/* the chip being carried leaves the box until it is dropped */
+.chip.carried {
+  display: none;
 }
 
 .search-drop {
@@ -697,6 +728,15 @@ main.on-hero {
 
 .suggestions li span:first-of-type {
   flex: 1;
+}
+
+.suggest-text {
+  font-family: "Golos Text Variable", sans-serif;
+}
+
+.suggestions .search-kbd {
+  order: 0;
+  margin: 0;
 }
 
 .suggestions li.active {
