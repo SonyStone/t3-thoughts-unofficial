@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type At, type Clause, type Drop, type Term } from "./clauses";
-import { draggable, dragged, onDrop, over, type Dragged } from "./drag";
+import { draggable, dragged, onDrop, over, still, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { currentQuery, route, setQuery } from "./route";
@@ -181,7 +181,8 @@ export default function SearchBox(props: { stuck: boolean }) {
 
   /**
    * The chip in the search that is being carried: a chip dragged out of it, or a tag from
-   * the page that the search already has. It leaves the box while it is carried.
+   * the page that the search already has. It stays behind, dimmed, until the drop; let go on
+   * it, nothing changes.
    */
   const carried = createMemo((): At | undefined => {
     const what = dragged();
@@ -225,6 +226,72 @@ export default function SearchBox(props: { stuck: boolean }) {
   const targets = new Map<string, Target>();
   const target = (key: string, to: Target) => (targets.set(key, to), { "data-drop": key });
 
+  /** A chip's name for sliding it from where it stood: the same tag before and after a change, whatever remounted it. */
+  const flipKey = (term: Term) => (term.all ? `(${term.all.map((part) => part.raw).join(" ")})` : term.raw).toLowerCase();
+  /** A group slides as one when it is the same group; its chips ride along. */
+  const clauseKey = (terms: Term[]) => `clause:${terms.map(flipKey).join(" || ")}`;
+
+  /** Where each chip stands, in the row's own coordinates, so the row may scroll in between. */
+  const measure = () => {
+    const at = new Map<string, { el: Element; x: number; y: number }>();
+    if (!row || !root) return at;
+    const left = row.getBoundingClientRect().left - row.scrollLeft;
+    // the row reaches over and under the box while dragging; the box itself stays put
+    const top = root.getBoundingClientRect().top;
+    const seen = new Map<string, number>();
+    for (const el of row.querySelectorAll<HTMLElement>("[data-flip]")) {
+      const name = el.dataset.flip!;
+      const n = seen.get(name) ?? 0;
+      seen.set(name, n + 1);
+      const box = el.getBoundingClientRect();
+      at.set(`${name}#${n}`, { el, x: box.left - left, y: box.top - top });
+    }
+    return at;
+  };
+
+  /** Notes where the chips stand; what it returns slides them from there to where they stand now (FLIP). */
+  const snapshot = () => {
+    if (still.matches) return () => {};
+    const before = measure();
+    return (keep?: Element) => {
+      const moved = new Map<Element, { x: number; y: number }>();
+      for (const [name, now] of measure()) {
+        const was = before.get(name);
+        if (!was) {
+          // a group the change made: its frame and its words fade in around chips sliding into it
+          if (now.el.matches(".chip-group")) now.el.animate([{ borderColor: "transparent" }, {}], { duration: 200, easing: "ease-out" });
+          for (const word of now.el.querySelectorAll(":scope > .chip-op")) word.animate([{ opacity: 0 }, { opacity: 0, offset: 0.4 }, {}], { duration: 220 });
+          continue;
+        }
+        const shift = { x: was.x - now.x, y: was.y - now.y };
+        moved.set(now.el, shift);
+        if (now.el === keep) continue;
+        // a part rides along with its group: only what it moves inside the group is its own
+        const group = now.el.parentElement?.closest("[data-flip]");
+        const carry = (group && moved.get(group)) || { x: 0, y: 0 };
+        const x = shift.x - carry.x;
+        const y = shift.y - carry.y;
+        if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) continue;
+        now.el.animate([{ translate: `${x}px ${y}px` }, { translate: "0 0" }], { duration: 200, easing: "cubic-bezier(0.2, 0, 0, 1)" });
+      }
+    };
+  };
+
+  /** A chip a drop just made: the row scrolls it into view, and the copy lands on it. */
+  const landOn = (name: string) => {
+    const key = name.toLowerCase().replace(/^-/, "");
+    const el = row?.querySelector(`[data-flip="${CSS.escape(key)}"], [data-flip="${CSS.escape(`raw:${key}`)}"], [data-flip="${CSS.escape(`raw:-${key}`)}"]`);
+    if (!el || !row) return el;
+    const box = row.getBoundingClientRect();
+    const chip = el.getBoundingClientRect();
+    if (chip.left < box.left) row.scrollLeft -= box.left - chip.left + 24;
+    else if (chip.right > box.right) row.scrollLeft += chip.right - box.right + 24;
+    markEdges();
+    return el;
+  };
+  /** A drop shows where its chip went; the row does not jump to the text field after it. */
+  let landing = false;
+
   /** Marks the sides of the row that have more chips past them, for the fades. */
   const markEdges = () => {
     if (!row) return;
@@ -238,6 +305,11 @@ export default function SearchBox(props: { stuck: boolean }) {
     () => {
       requestAnimationFrame(() => {
         if (!row || !input) return;
+        if (landing) {
+          landing = false;
+          markEdges();
+          return;
+        }
         const box = row.getBoundingClientRect();
         const field = input.getBoundingClientRect();
         if (field.right > box.right) row.scrollLeft += field.right - box.right + 8;
@@ -254,9 +326,12 @@ export default function SearchBox(props: { stuck: boolean }) {
     () => !!dragged(),
     (dragging) => {
       if (!dragging) return;
+      landing = false;
       let x = -1;
       let y = -1;
       let frame = 0;
+      // the tab nearest the pointer leans out to meet it
+      let near: Element | undefined;
       const track = (event: PointerEvent) => {
         x = event.clientX;
         y = event.clientY;
@@ -264,6 +339,18 @@ export default function SearchBox(props: { stuck: boolean }) {
       const step = () => {
         frame = requestAnimationFrame(step);
         if (!row) return;
+        let best: Element | undefined;
+        let bestDistance = 40;
+        for (const tab of row.querySelectorAll(".or-tab, .and-tab")) {
+          const r = tab.getBoundingClientRect();
+          const distance = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
+          if (distance < bestDistance) [best, bestDistance] = [tab, distance];
+        }
+        if (best !== near) {
+          near?.removeAttribute("data-near");
+          best?.setAttribute("data-near", "");
+          near = best;
+        }
         // the line of chips itself, not the tabs over and under it (a tag passes those on its way)
         const box = row.getBoundingClientRect();
         const pad = parseFloat(getComputedStyle(row).paddingTop);
@@ -280,6 +367,7 @@ export default function SearchBox(props: { stuck: boolean }) {
       return () => {
         window.removeEventListener("pointermove", track, true);
         cancelAnimationFrame(frame);
+        near?.removeAttribute("data-near");
         markEdges();
       };
     },
@@ -296,15 +384,24 @@ export default function SearchBox(props: { stuck: boolean }) {
     };
     window.addEventListener("keydown", focusShortcut);
     // let go off the box, a carried chip leaves the query; on a place, it goes there
+    // the copy then lands on the chip the drop made, goes home when nothing changed, or fades when the chip left
     const stop = onDrop(
       (what, key) => {
         if (key === "outside") {
-          if (carried()) place(what, "remove");
-        } else if (key && targets.has(key)) {
-          place(what, targets.get(key)!);
+          if (!carried()) return;
+          place(what, "remove");
+          return () => "gone";
         }
+        if (!key || !targets.has(key)) return;
+        const before = currentQuery();
+        place(what, targets.get(key)!);
+        if (currentQuery() === before) return;
+        // the query changed, so the caret effect runs once for it: that run leaves the row be
+        landing = true;
+        return () => landOn(what.kind === "tag" ? what.tag : what.raw);
       },
       (x, y) => !!carried() && outside(x, y),
+      { snapshot, settled: () => route().q === currentQuery() },
     );
     return () => {
       window.removeEventListener("keydown", focusShortcut);
@@ -323,6 +420,9 @@ export default function SearchBox(props: { stuck: boolean }) {
           }))}
       class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
+      data-flip={flipKey(chip.term)}
+      // let go on its own trace, a chip stays where it was
+      data-drop={isCarried(chip.clause, chip.index) ? "stay" : undefined}
       onClick={(event) => openTagMenu(event, chip.term.raw)}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
@@ -373,6 +473,8 @@ export default function SearchBox(props: { stuck: boolean }) {
         }}
         class={{ part: true, neg: chip.part.neg, carried: isCarriedPart(chip.clause, chip.term, chip.index) }}
         data-ns={namespaceKey(chip.part.raw)}
+        data-flip={flipKey(chip.part)}
+        data-drop={isCarriedPart(chip.clause, chip.term, chip.index) ? "stay" : undefined}
       >
         <TagLabel tag={chip.part.raw} />
       </span>
@@ -405,6 +507,8 @@ export default function SearchBox(props: { stuck: boolean }) {
                       {...draggable(() => ({ kind: "chip", clause: index(), term: -1, raw: (clause as { raw: string }).raw, neg: false }), { touch: "hold" })}
                       class={{ chip: true, raw: true, carried: isCarried(index(), -1) }}
                       style={{ order: 2 * index() + 2 }}
+                      data-flip={`raw:${(clause as { raw: string }).raw.toLowerCase()}`}
+                      data-drop={isCarried(index(), -1) ? "stay" : undefined}
                     >
                       {(clause as { raw: string }).raw}
                     </button>
@@ -414,11 +518,12 @@ export default function SearchBox(props: { stuck: boolean }) {
                     <span
                       class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
                       style={{ order: 2 * index() + 2 }}
+                      data-flip={clauseKey(group().terms)}
                     >
                       <For each={group().terms}>
                         {(term, termIndex) => (
                           <>
-                            <Show when={termIndex() > 0 && !isCarried(index(), termIndex())}>
+                            <Show when={termIndex() > 0}>
                               <span class="chip-op">{t().or}</span>
                             </Show>
                             <span class="term">

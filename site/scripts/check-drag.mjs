@@ -24,7 +24,7 @@ async function tryDrag(name, sourceText, to) {
   const andTabs = await page.locator(".and-tab").count();
   if (andTabs) console.log("  !! and tabs outside an or group:", andTabs);
   await page.mouse.up();
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(700);
   console.log(name.padEnd(28), "->", JSON.stringify(await q()), JSON.stringify(await state()));
 }
 const center = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };

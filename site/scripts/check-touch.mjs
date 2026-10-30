@@ -35,7 +35,7 @@ async function drag(name, from, to, holdMs = 0) {
   const from2 = { x: s.x + 12, y: s.y - 18 };
   for (let i = 1; i <= 10; i++) { await touch("touchMove", from2.x + ((b.x - from2.x) * i) / 10, from2.y + ((b.y - from2.y) * i) / 10); await page.waitForTimeout(16); }
   await touch("touchEnd");
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(700);
   console.log(name.padEnd(30), "dragging:", !!dragging, "->", JSON.stringify(await read()));
 }
 const tag = (t) => () => page.locator(".hero-cloud .tag", { hasText: t }).first();

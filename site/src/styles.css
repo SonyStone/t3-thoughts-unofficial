@@ -438,8 +438,9 @@ main.on-hero {
   font-size: 1.2rem;
 }
 
-/* not typing, the field after the chips takes no room of its own: short queries fit the row */
-.search:not(.focused) .chips > input:not(:placeholder-shown) {
+/* not typing, the field after the chips takes no room of its own: short queries fit the row
+   (with chips it has an empty placeholder, which :placeholder-shown still counts as shown) */
+.search:not(.focused) .chips > input[placeholder=""] {
   flex: 0 0 0;
   min-width: 0;
 }
@@ -574,7 +575,8 @@ main.on-hero {
   cursor: grab;
 }
 
-/* the copy of a tag or chip that follows the pointer while it is dragged */
+/* the copy of a tag or chip that follows the pointer while it is dragged: it starts flat on
+   the source and peels off, bigger and with a shadow under it */
 .drag-ghost {
   position: fixed;
   top: 0;
@@ -582,21 +584,43 @@ main.on-hero {
   z-index: 50;
   margin: 0;
   pointer-events: none;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
   cursor: grabbing;
+  will-change: translate;
+  transition:
+    scale 0.15s ease-out,
+    box-shadow 0.15s ease-out;
+}
+
+.drag-ghost.lifted {
+  scale: 1.05;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.55);
 }
 
 /* a tag a finger has rested on long enough: picked up, ready to drag (or let go for the menu) */
 [data-held] {
-  transform: scale(1.08);
+  scale: 1.05;
   border-color: var(--accent);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  transition: transform 0.12s;
+  transition: scale 0.12s ease-out;
 }
 
 /* the tag or chip being dragged stays in place, dimmed, while its copy follows the pointer */
 [data-drag-source] {
   opacity: 0.35;
+  transition: opacity 0.15s;
+}
+
+/* where a drop went: a short flash on the chip it made */
+[data-landed] {
+  animation: landed 0.7s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+@keyframes landed {
+  from {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
 }
 
 
@@ -666,6 +690,14 @@ main.on-hero {
   flex: 1 0 360px;
   align-self: stretch;
   margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) 8px;
+  animation: board-in 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@keyframes board-in {
+  from {
+    opacity: 0;
+    translate: 16px 0;
+  }
 }
 
 .search.dragging .search-field input,
@@ -735,6 +767,43 @@ main.on-hero {
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.85rem;
+  /* it slides out from under the chip when a drag starts, and leans out to the pointer */
+  animation: tab-down 0.18s cubic-bezier(0.2, 0, 0, 1) backwards;
+  transition:
+    height 0.15s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
+}
+
+@keyframes tab-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes tab-up {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+.or-tab[data-near],
+.and-tab[data-near] {
+  height: calc(var(--tab) + 3px);
+  border-color: var(--text-2);
+  color: var(--text);
+}
+
+.or-tab.over,
+.and-tab.over {
+  height: calc(var(--tab) + 5px);
 }
 
 .clause:has(.or-tab) .chip {
@@ -776,6 +845,12 @@ main.on-hero {
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.85rem;
+  animation: tab-up 0.18s cubic-bezier(0.2, 0, 0, 1) backwards;
+  transition:
+    height 0.15s cubic-bezier(0.2, 0, 0, 1),
+    border-color 0.15s,
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .term:has(.and-tab) .chip {
@@ -834,12 +909,6 @@ main.on-hero {
   border-radius: 6px;
 }
 
-/* a part dragged out of its group goes with its "and" (the one before it, or after the first) */
-.and-group .part.carried,
-.and-group .chip-op:has(+ .part.carried),
-.and-group .bracket + .part.carried + .chip-op {
-  display: none;
-}
 
 /* the copy of a part that follows the pointer, out of the chip that styled it */
 .part.drag-ghost {
@@ -874,9 +943,32 @@ main.on-hero {
   margin-right: -5px;
 }
 
-/* the chip being carried leaves the box until it is dropped (the drag holds on through a proxy) */
-.chip.carried {
-  display: none;
+/* the chip being carried stays behind, dimmed, until it is dropped (a tag from the page that
+   the search has carries its chip too) */
+.chip.carried,
+.and-group .part.carried {
+  opacity: 0.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drag-ghost,
+  [data-held],
+  [data-drag-source],
+  .or-tab,
+  .and-tab,
+  .drop-board {
+    animation: none;
+    transition: none;
+  }
+
+  .drag-ghost.lifted,
+  [data-held] {
+    scale: none;
+  }
+
+  [data-landed] {
+    animation: none;
+  }
 }
 
 .search-drop {
