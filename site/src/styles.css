@@ -1016,11 +1016,11 @@ main.on-hero {
   z-index: 40;
   display: grid;
   grid-template: "field done" auto "drop drop" minmax(0, 1fr) / minmax(0, 1fr) auto;
-  gap: 10px 8px;
+  gap: 8px 4px;
   height: var(--view-height, 100vh);
   max-width: none;
   margin: 0;
-  padding: 12px 12px 0;
+  padding: 8px 8px 0;
   background: rgba(13, 11, 16, 0.97);
 }
 
@@ -1036,8 +1036,22 @@ main.on-hero {
   background: inherit;
 }
 
+/* the box is all chips here: no icon, and clearing moves to the top of the list */
+.search.editing .search-icon,
+.search.editing .search-clear,
+.search.editing .cloud-more {
+  display: none;
+}
+
+/* an empty field keeps only a caret's room, so the chips fit before it scrolls */
+.search.editing .search-field input:not(.inside) {
+  flex: 1 0 24px;
+  min-width: 24px;
+}
+
 .search.editing .search-field {
   grid-area: field;
+  padding-left: 10px;
   box-shadow: none;
   /* a backdrop filter would make the box, not the screen, the frame of the docked zones */
   backdrop-filter: none;
@@ -1051,7 +1065,7 @@ main.on-hero {
 .search-done {
   grid-area: done;
   align-self: center;
-  padding: 10px 6px;
+  padding: 8px 4px;
   border: 0;
   background: none;
   color: var(--accent);
@@ -1066,8 +1080,9 @@ main.on-hero {
   max-height: none;
   min-height: 0;
   overscroll-behavior: contain;
+  padding: 10px 12px;
   /* it ends over the docked zones */
-  margin-bottom: 64px;
+  margin-bottom: 52px;
   border-radius: var(--radius) var(--radius) 0 0;
   box-shadow: none;
 }
@@ -1079,7 +1094,7 @@ main.on-hero {
   bottom: 0;
   left: 0;
   z-index: 7;
-  height: 64px;
+  height: 52px;
   margin: 0;
   border-top: 1px solid var(--line-strong);
   border-bottom: 0;
@@ -1102,12 +1117,30 @@ main.on-hero {
 
 /* the query in words, at the top of the dropdown */
 .query-says {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 12px;
-  overflow: hidden;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.query-says span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.says-clear {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
 }
 
 .search-drop {
@@ -2946,8 +2979,7 @@ footer {
     gap: 6px;
   }
 
-  /* phone: the board takes a row of its own above the chips, edge to edge, so the "or"
-     tabs hanging under the chips stay clear of it */
+  /* phone: while dragging, the chips get the icon's room too */
   .search.dragging .search-icon {
     display: none;
   }
