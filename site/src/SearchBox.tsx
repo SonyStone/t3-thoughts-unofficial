@@ -64,6 +64,19 @@ export default function SearchBox(props: { stuck: boolean }) {
   const startEditing = () => {
     if (PHONE.matches && !editing()) setEditing(true);
   };
+  /**
+   * A chip tapped (or held and let go): its menu. On a phone not editing yet, the editing
+   * screen instead: the chips leave the box no free room to tap, and the menu belongs there.
+   */
+  const chipMenu = (event: MouseEvent | undefined, tag: string, el?: HTMLElement, x = 0, y = 0) => {
+    if (PHONE.matches && !editing()) {
+      event?.preventDefault();
+      event?.stopPropagation();
+      input?.focus();
+    } else if (event) openTagMenu(event, tag);
+    else openAt(el ?? null, tag, x, y);
+  };
+
   /** A tag or chip: what a finger presses to pick up or open a menu, never to type in. */
   const grabs = (el: HTMLElement) => !!el.closest(".tag, .chip, .part");
   const stopEditing = () => {
@@ -583,14 +596,14 @@ export default function SearchBox(props: { stuck: boolean }) {
         ? {}
         : draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.index, raw: chip.term.raw, neg: chip.term.neg }), {
             touch: "hold",
-            onHeld: (el, x, y) => openAt(el, chip.term.raw, x, y),
+            onHeld: (el, x, y) => chipMenu(undefined, chip.term.raw, el, x, y),
           }))}
       class={{ chip: true, neg: chip.term.neg, compound: !!chip.term.all, carried: isCarried(chip.clause, chip.index) }}
       data-ns={namespaceKey(chip.term.raw)}
       data-flip={flipKey(chip.term)}
       // let go on its own trace, a chip stays where it was
       data-drop={isCarried(chip.clause, chip.index) ? "stay" : undefined}
-      onClick={(event) => openTagMenu(event, chip.term.raw)}
+      onClick={(event) => chipMenu(event, chip.term.raw)}
       onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
     >
       {/* an AND inside an OR: its parts in brackets, each its own chip to drag out */}
@@ -619,7 +632,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const PartChip = (chip: { part: Term; clause: number; term: number; index: number }) => {
     const drag = draggable(() => ({ kind: "chip", clause: chip.clause, term: chip.term, part: chip.index, raw: chip.part.raw, neg: chip.part.neg }), {
       touch: "hold",
-      onHeld: (el, x, y) => openAt(el, chip.part.raw, x, y),
+      onHeld: (el, x, y) => chipMenu(undefined, chip.part.raw, el, x, y),
     });
     return (
       <span
@@ -632,7 +645,7 @@ export default function SearchBox(props: { stuck: boolean }) {
         }}
         onClick={(event) => {
           event.stopPropagation();
-          openTagMenu(event, chip.part.raw);
+          chipMenu(event, chip.part.raw);
         }}
         onContextMenu={(event) => {
           event.stopPropagation();

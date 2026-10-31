@@ -90,6 +90,21 @@ await hold(undefined, async (s) => {
 });
 console.log("out and back to Only".padEnd(30), "->", JSON.stringify(await q()));
 
+// a chip tapped on the page: the editing screen (the box has no free room to tap); on the
+// screen, the chip's menu, in sight
+await page.locator(".search-done").tap();
+await page.waitForTimeout(300);
+await page.locator(".search .chip").first().tap();
+await page.waitForTimeout(400);
+console.log("tap a chip on the page".padEnd(30), "->", JSON.stringify(await state()), "menu:", await page.locator(".tag-menu").count());
+await page.locator(".search .chip").first().tap();
+await page.waitForTimeout(400);
+console.log("tap a chip, editing".padEnd(30), "->", JSON.stringify(await state()), "menu:", await page.locator(".tag-menu").count());
+await page.keyboard.press("Escape");
+await page.waitForTimeout(200);
+await page.locator(".search-field").click({ position: { x: 18, y: 20 } });
+await page.waitForTimeout(300);
+
 // Done: the screen goes, the page is back where it was
 await page.locator(".search-done").tap();
 await page.waitForTimeout(300);

@@ -125,7 +125,10 @@ export default function TagMenu() {
       const open = menu();
       if (!open || !panel) return;
       const height = panel.scrollHeight;
-      const room = { below: window.innerHeight - open.below - GAP - 8, above: open.above - GAP - 8 };
+      // down to what is in sight: a phone's keyboard covers the bottom of the window
+      const view = window.visualViewport;
+      const bottom = view ? view.offsetTop + view.height : window.innerHeight;
+      const room = { below: bottom - open.below - GAP - 8, above: open.above - GAP - 8 };
       if (height <= room.below) setPlacement({ top: open.below + GAP });
       else if (room.below >= room.above) setPlacement({ top: open.below + GAP, maxHeight: room.below });
       else setPlacement({ top: Math.max(8, open.above - GAP - height), maxHeight: room.above });
