@@ -1035,9 +1035,9 @@ main.on-hero {
 }
 
 /* edge to edge, as a phone's search screens are: back, the chips, clear, in one flat bar
-   over the list; no search icon, and no link off the page */
+   over the list; no search icon, and over the list no sort switch or link off the page */
 .search.editing .search-icon,
-.search.editing .cloud-more {
+.search.editing .cloud-bar {
   display: none;
 }
 

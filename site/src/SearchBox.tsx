@@ -839,8 +839,9 @@ export default function SearchBox(props: { stuck: boolean }) {
         {/* mousedown keeps focus in the input, so its blur doesn't close the dropdown first */}
         <div class="search-drop" onMouseDown={(event) => event.preventDefault()}>
           {/* the query read out, quietly, where it is being worked on: only when the chips
-              alone take some reading (groups, a minus, more than one) */}
-          <Show when={inWords(clauses(), t().says)}>
+              alone take some reading (groups, a minus, more than one); not on a phone's
+              editing screen, where the room is for the tags */}
+          <Show when={!editing() && inWords(clauses(), t().says)}>
             {(words) => (
               <div class="query-says">
                 <span>{words()}</span>
