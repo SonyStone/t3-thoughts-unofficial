@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
-import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type At, type Clause, type Drop, type Term } from "./clauses";
+import { andWith, applyTag, dropTag, editTerm, excludesTag, moveTerm, toClauses, toQuery, uses, type At, type Clause, type Drop, type Term } from "./clauses";
 import { draggable, dragged, onDrop, over, still, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
@@ -126,9 +126,11 @@ export default function SearchBox(props: { stuck: boolean }) {
     setActive(0);
   };
 
+  /** A suggestion picked: it joins the search; one the search has already leaves it, as a tag's click does. */
   const pick = (term: string) => {
     const negate = /^[-!]/.test(term) || /^[-!]/.test(draft());
-    insert(applyTag(currentQuery(), term.replace(/^[-!]/, ""), negate ? "exclude" : "and"));
+    const tag = term.replace(/^[-!]/, "");
+    insert(applyTag(currentQuery(), tag, negate ? "exclude" : uses(currentQuery(), tag) ? "remove" : "and"));
     setDraft("");
     setActive(0);
     input?.focus();
@@ -138,6 +140,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const removeAt = (index: number) => setQuery(toQuery(clauses().filter((_, i) => i !== index)));
 
   const onKeyDown = (event: KeyboardEvent) => {
+    fromList = undefined;
     const list = options();
     if (event.key === "Escape") {
       stopEditing();
@@ -194,7 +197,24 @@ export default function SearchBox(props: { stuck: boolean }) {
 
   const isOneKnownWord = (text: string) => /^\S+$/.test(text.trim()) && !openQuote(text) && knowsTerm(text);
 
+  /**
+   * The suggestion last pressed: dragged into the search or held for its menu, it changes the
+   * query without a pick, and what was typed to find it goes then as after a pick.
+   */
+  let fromList: string | undefined;
+  createEffect(
+    () => route().q,
+    () => {
+      if (fromList === undefined) return;
+      fromList = undefined;
+      setDraft("");
+      setActive(0);
+    },
+    { defer: true },
+  );
+
   const onInput = (value: string) => {
+    fromList = undefined;
     setDraft(value);
     setActive(0);
   };
@@ -677,6 +697,50 @@ export default function SearchBox(props: { stuck: boolean }) {
     );
   };
 
+  /**
+   * One suggestion. A tag is picked up and held as on the page: dragged onto a zone or among the
+   * chips, or let go in place for its menu; the text option is only picked. One the search has
+   * already is framed as that tag is on the page.
+   */
+  const Suggestion = (row: { tag: string; count: number; index: number }) => {
+    const drag =
+      row.count >= 0
+        ? draggable(() => ({ kind: "tag", tag: row.tag }), { touch: "hold", onHeld: (el, x, y) => openAt(el, row.tag, x, y), copy: ".suggest-tag" })
+        : undefined;
+    return (
+      <li
+        role="option"
+        aria-selected={row.index === active() ? "true" : "false"}
+        class={{ active: row.index === active(), used: uses(route().q, row.tag), excluded: excludesTag(route().q, row.tag) }}
+        data-ns={namespaceKey(row.tag)}
+        onPointerDown={(event) => {
+          fromList = row.tag;
+          drag?.onPointerDown(event);
+        }}
+        onContextMenu={(event) => row.count >= 0 && openTagMenu(event, row.tag)}
+        // the field keeps the focus; the pick is the click, so a press can become a drag
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => pick(row.tag)}
+      >
+        {/* the text option reads as an action, not as one more tag */}
+        <Show
+          when={/^-?text:/.test(row.tag)}
+          fallback={
+            <span class="suggest-tag" data-ns={namespaceKey(row.tag)}>
+              {row.tag}
+            </span>
+          }
+        >
+          <span class="suggest-text">{t().searchFor(row.tag.replace(/^-?text:"|"$/g, ""))}</span>
+          <kbd class="search-kbd">Enter</kbd>
+        </Show>
+        <Show when={row.count >= 0}>
+          <span class="tag-count">{row.count}</span>
+        </Show>
+      </li>
+    );
+  };
+
   return (
     <div class={{ search: true, focused: focused(), editing: editing(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
       <div
@@ -867,29 +931,7 @@ export default function SearchBox(props: { stuck: boolean }) {
           </Show>
           <Show when={options().length > 0} fallback={<TagCloud />}>
             <ul class="suggestions" role="listbox">
-              <For each={options()}>
-                {([tag, count], index) => (
-                  <li
-                    role="option"
-                    aria-selected={index() === active() ? "true" : "false"}
-                    class={{ active: index() === active() }}
-                    data-ns={namespaceKey(tag)}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      pick(tag);
-                    }}
-                  >
-                    {/* the text option reads as an action, not as one more tag */}
-                    <Show when={/^-?text:/.test(tag)} fallback={<span>{tag}</span>}>
-                      <span class="suggest-text">{t().searchFor(tag.replace(/^-?text:"|"$/g, ""))}</span>
-                      <kbd class="search-kbd">Enter</kbd>
-                    </Show>
-                    <Show when={count >= 0}>
-                      <span class="tag-count">{count}</span>
-                    </Show>
-                  </li>
-                )}
-              </For>
+              <For each={options()}>{([tag, count], index) => <Suggestion tag={tag} count={count} index={index()} />}</For>
             </ul>
           </Show>
         </div>

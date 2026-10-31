@@ -176,11 +176,12 @@ window.addEventListener(
  * Handlers for an element that can be dragged; the mouse always drags. A finger drags at
  * once, or with `touch: "hold"` only after resting on it for HOLD_MS: a swipe before that
  * scrolls the page (a tag row has to scroll), and a hold let go without moving calls
- * `onHeld` (the tag menu).
+ * `onHeld` (the tag menu). `copy` picks the part of the source the copy is made of (the tag
+ * in a row of suggestions), under the pointer.
  */
 export function draggable(
   what: () => Dragged,
-  options: { touch?: true | "hold"; onHeld?: (source: HTMLElement, x: number, y: number) => void } = {},
+  options: { touch?: true | "hold"; onHeld?: (source: HTMLElement, x: number, y: number) => void; copy?: string } = {},
 ) {
   return {
     draggable: "false" as const,
@@ -223,9 +224,11 @@ export function draggable(
       const begin = () => {
         const held = source.hasAttribute("data-held");
         source.removeAttribute("data-held");
-        const box = source.getBoundingClientRect();
-        offset = { x: start.x - box.left, y: start.y - box.top };
-        ghost = source.cloneNode(true) as HTMLElement;
+        const shape = (options.copy && source.querySelector<HTMLElement>(options.copy)) || source;
+        const box = shape.getBoundingClientRect();
+        const clamp = (n: number, size: number) => Math.max(0, Math.min(n, size));
+        offset = { x: clamp(start.x - box.left, box.width), y: clamp(start.y - box.top, box.height) };
+        ghost = shape.cloneNode(true) as HTMLElement;
         ghost.classList.add("drag-ghost");
         ghost.style.width = `${box.width}px`;
         // it peels off right where the source is, from the point it was grabbed by

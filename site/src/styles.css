@@ -1246,6 +1246,54 @@ main.on-hero {
   background: var(--panel-2);
 }
 
+/* the tag's name only as wide as it is: that is what a drag picks up */
+.suggestions li span.suggest-tag {
+  flex: 0 1 auto;
+  margin-right: auto;
+}
+
+/* in the search already: framed as the tag is on the page (a tap takes it out), struck out when excluded */
+.suggestions li.used {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.suggestions li.excluded .suggest-tag {
+  color: var(--muted);
+  text-decoration: line-through #e66767;
+}
+
+/* a row a finger has rested on: its tag is picked up (let go in place, its menu) */
+.suggestions li[data-held] {
+  scale: none;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* the copy a drag takes from a row: the tag, as it looks on the page */
+.suggest-tag.drag-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: max-content !important;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.suggest-tag.drag-ghost::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--ns, var(--line-strong));
+}
+
 /* Tag cloud under the search */
 
 .hero-cloud {
