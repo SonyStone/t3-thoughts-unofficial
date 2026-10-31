@@ -527,8 +527,9 @@ export default function SearchBox(props: { stuck: boolean }) {
         }
         // the line of chips itself, not the tabs over and under it (a tag passes those on its way)
         const box = row.getBoundingClientRect();
-        const pad = parseFloat(getComputedStyle(row).paddingTop);
-        if (y < box.top + pad || y > box.bottom || x < box.left || x > box.right) return;
+        const style = getComputedStyle(row);
+        const [top, bottom] = [box.top + parseFloat(style.paddingTop), box.bottom - parseFloat(style.paddingBottom)];
+        if (y < top || y > bottom || x < box.left || x > box.right) return;
         const edge = 48;
         const speed = x < box.left + edge ? -(box.left + edge - x) : x > box.right - edge ? x - (box.right - edge) : 0;
         if (speed) {
@@ -810,7 +811,8 @@ export default function SearchBox(props: { stuck: boolean }) {
             </span>
           </span>
         </Show>
-        <Show when={route().q && !dragged()}>
+        {/* on a phone's editing screen it stays put while dragging, so the bar does not move */}
+        <Show when={route().q && (!dragged() || editing())}>
           <button
             class="search-clear"
             aria-label={t().clear}

@@ -733,7 +733,7 @@ main.on-hero {
 
 /* the text field gives its room to the zones but stays on the page: hidden, it would lose the
    focus, and a phone would put its keyboard away mid-drag */
-.search.dragging .search-field input {
+.search.dragging:not(.editing) .search-field input {
   flex: 0 0 1px;
   width: 1px;
   min-width: 0;
@@ -816,7 +816,7 @@ main.on-hero {
 }
 
 /* a short chip widens while dragging, so its tabs are big enough to hit and stay over it */
-.search.dragging .term {
+.search.dragging:not(.editing) .term {
   min-width: 64px;
 }
 
@@ -1060,9 +1060,48 @@ main.on-hero {
   backdrop-filter: none;
 }
 
-/* the "and" tabs hang over the chips while dragging: the box steps down to make them room */
-.search.editing.dragging .search-field {
-  margin-top: calc(var(--tab) + 6px);
+/* a drag leaves the bar as it was: the clear button stays, the text field keeps its room (only
+   its text hides), a short chip in an "or" group is already wide enough for its tab, and the
+   row reaches under the box, over the list, for the "and" tabs, which hang down here */
+.search.editing.dragging .search-field input {
+  opacity: 0;
+}
+
+.search.editing .chip-group .term {
+  min-width: 64px;
+}
+
+.search.editing.dragging .chips {
+  z-index: 7;
+  flex: 1 1 0;
+  margin-top: 0;
+  margin-bottom: calc(-1 * var(--tab) - 6px);
+  padding-top: 0;
+  padding-bottom: calc(var(--tab) + 6px);
+}
+
+.search.editing .and-tab {
+  top: calc(100% - 1px);
+  bottom: auto;
+  place-items: end center;
+  padding: 0 0 10px;
+  border: 1px dashed var(--muted);
+  border-top: 0;
+  border-radius: 0 0 10px 10px;
+  animation-name: tab-down;
+}
+
+@keyframes tab-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+.search.editing .term:has(.and-tab) .chip {
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
 }
 
 .search-done {
