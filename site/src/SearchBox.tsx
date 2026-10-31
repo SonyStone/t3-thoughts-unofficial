@@ -3,6 +3,7 @@ import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, typ
 import { draggable, dragged, onDrop, over, still, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
+import { inWords } from "./inWords";
 import { currentQuery, route, setQuery } from "./route";
 import { knowsTerm, suggest, textTerm } from "./search";
 import { namespaceKey, TagLabel } from "./Tag";
@@ -819,6 +820,9 @@ export default function SearchBox(props: { stuck: boolean }) {
       <Show when={options().length > 0 || showCloud()}>
         {/* mousedown keeps focus in the input, so its blur doesn't close the dropdown first */}
         <div class="search-drop" onMouseDown={(event) => event.preventDefault()}>
+          {/* the query read out, quietly, where it is being worked on: only when the chips
+              alone take some reading (groups, a minus, more than one) */}
+          <Show when={inWords(clauses(), t().says)}>{(words) => <p class="query-says">{words()}</p>}</Show>
           <Show when={options().length > 0} fallback={<TagCloud />}>
             <ul class="suggestions" role="listbox">
               <For each={options()}>

@@ -1091,6 +1091,16 @@ main.on-hero {
   border-radius: 0;
 }
 
+/* the query in words, at the top of the dropdown */
+.query-says {
+  margin: 0 0 12px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .search-drop {
   position: absolute;
   top: calc(100% + 8px);

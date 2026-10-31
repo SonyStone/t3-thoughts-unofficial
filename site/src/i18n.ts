@@ -50,6 +50,7 @@ const en = {
   clear: "Clear search",
   done: "Done",
   searchFor: (words: string) => `Search the text for “${words}”`,
+  says: { lead: "Looking for", and: "and", or: "or", without: "without", not: "not", all: "Everything" },
   drop: { add: "Add (and)", negate: "Without", include: "Include", only: "Only this", and: "and", or: "or" },
   tagMenu: {
     only: "Only this tag",
@@ -194,6 +195,7 @@ const ru: Dict = {
   clear: "Очистить поиск",
   done: "Готово",
   searchFor: (words: string) => `Искать в тексте «${words}»`,
+  says: { lead: "Ищем", and: "и", or: "или", without: "без", not: "не", all: "Всё" },
   drop: { add: "Добавить (и)", negate: "Без", include: "Включить", only: "Только это", and: "и", or: "или" },
   tagMenu: {
     only: "Только этот тег",
