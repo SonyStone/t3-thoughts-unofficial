@@ -30,6 +30,8 @@ async function drag(name, from, to, holdMs = 0) {
   if (holdMs) await page.waitForTimeout(holdMs);
   // the zones show once the drag starts, so the target is found after the first moves
   for (let i = 1; i <= 3; i++) { await touch("touchMove", s.x + i * 4, s.y - i * 6); await page.waitForTimeout(16); }
+  // and once the chips have slid to where the drag puts them
+  await page.waitForTimeout(300);
   const dragging = await page.locator(".search.dragging").count();
   const b = dragging || !to ? await (to ?? (async () => ({ x: s.x, y: s.y - 300 })))() : { x: s.x, y: s.y - 300 };
   const from2 = { x: s.x + 12, y: s.y - 18 };
@@ -50,7 +52,7 @@ await drag("tag hold -> after chips", tag("kind:post"), async () => {
   return { x: Math.min(b.x + b.width + 30, 370), y: b.y + b.height / 2 };
 }, 600);
 await drag("tag hold -> Without", tag("kind:post"), zone("Without"), 600);
-await drag("tag hold -> or under group", tag("kind:post"), () => center(page.locator(".or-tab").first()), 600);
+await drag("tag hold -> or on group", tag("kind:post"), () => center(page.locator(".search .chips > .clause").first()), 600);
 await drag("tag hold -> and over claude", tag("kind:post"), () => center(page.locator(".and-tab").nth(1)), 600);
 // a swipe along a tag row scrolls the row
 {

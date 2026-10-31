@@ -19,9 +19,9 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
  * The search box: the query as chips (AND between chips, OR inside a group), then a text
  * field with tag autocomplete. A space or Enter turns the text into a chip, Backspace on an
  * empty field takes the chip before the caret back, a chip click opens the tag menu. Chips
- * and tags from the page can be dragged in (drag.ts): onto the zones of the box, the "or"
- * tab under a chip, the "and" tab over an alternative in an "or" group; a chip let go off the box
- * leaves the query.
+ * and tags from the page can be dragged in (drag.ts): between chips (its own chip there), onto
+ * the middle of a chip (an "or" with it), onto the zones of the box, onto the "and" tab over an
+ * alternative in an "or" group; a chip let go off the box leaves the query.
  * `/` and ⌘K focus it from anywhere. Once it sticks to the top, focusing it shows the
  * tag cloud in a dropdown.
  */
@@ -304,6 +304,11 @@ export default function SearchBox(props: { stuck: boolean }) {
    * "Add" zone: a preview of it opens there, and a drop on the chips puts it there.
    */
   const [insertAt, setInsertAt] = createSignal<number | undefined>();
+  /**
+   * The group the dragged tag would join with "or", while it is over the middle of a chip: the
+   * group's frame and a preview of the tag open around that chip.
+   */
+  const [joinAt, setJoinAt] = createSignal<number | undefined>();
   /** What the preview shows: the dragged tag as its chip would look. */
   const preview = () => {
     const what = dragged();
@@ -311,41 +316,55 @@ export default function SearchBox(props: { stuck: boolean }) {
     return what.kind === "tag" ? { raw: what.tag, neg: over() === "negate" } : { raw: what.raw, neg: what.neg !== (over() === "negate") };
   };
 
-  /** The gap under the pointer: before the first chip whose middle is right of it, measured as if the preview were not there. */
-  const gapAt = (x: number) => {
-    if (!row) return clauses().length;
+  /**
+   * What a drop at `x` would do on the chips: join the group under the pointer (its middle), or
+   * open a gap between chips (before the first whose middle is right of `x`). Read as if no
+   * preview were open, and from where the chips stand, not where their slide has got to:
+   * otherwise opening a preview would move the answer and it would flip back and forth.
+   */
+  const aimAt = (x: number): { gap?: number; join?: number } => {
+    if (!row) return { gap: clauses().length };
     const open = insertAt();
-    const slot = row.querySelector(":scope > .slot");
-    const room = slot ? slot.getBoundingClientRect().width + 8 : 0;
-    let index = 0;
-    for (const el of row.querySelectorAll(":scope > .clause, :scope > .chip.raw")) {
-      const box = el.getBoundingClientRect();
-      // where it stands, not where its slide has got to: a gap read off a sliding chip would flip back and forth
-      const slide = parseFloat(getComputedStyle(el).translate) || 0;
-      const middle = box.left - slide + box.width / 2 - (open !== undefined && index >= open ? room : 0);
-      if (middle > x) break;
-      index++;
-    }
-    return index;
+    const joined = joinAt();
+    // offsets too: a preview that has just opened is still scaling up
+    const width = (el: HTMLElement | null, gap: number) => (el ? el.offsetWidth + gap : 0);
+    const room = width(row.querySelector<HTMLElement>(":scope > .slot"), 8);
+    const grown = width(row.querySelector<HTMLElement>(".join-preview"), 6);
+    // the row is the chips' offset parent: their offsets are where they stand, whatever slides
+    const origin = row.getBoundingClientRect().left + row.clientLeft - row.scrollLeft;
+    let gap = 0;
+    let join: number | undefined;
+    [...row.querySelectorAll<HTMLElement>(":scope > .clause, :scope > .chip.raw")].forEach((el, index) => {
+      let left = origin + el.offsetLeft;
+      let right = left + el.offsetWidth;
+      if (open !== undefined && index >= open) [left, right] = [left - room, right - room];
+      if (joined !== undefined && index > joined) [left, right] = [left - grown, right - grown];
+      if (index === joined) right -= grown;
+      // the ends of a chip are for the gaps beside it
+      const edge = Math.min(18, (right - left) / 4);
+      if (el.matches(".clause") && canJoin(index) && x >= left + edge && x <= right - edge) join = index;
+      if ((left + right) / 2 <= x) gap = index + 1;
+    });
+    return join !== undefined ? { join } : { gap };
   };
 
-  /** Where a drop would open a gap, if it would change anything there. */
-  const insertion = (x: number): number | undefined => {
-    const key = over();
+  /** Where a drop would open a gap or join a group, if it would change anything there. */
+  const aim = (x: number, key = over()): { gap?: number; join?: number } => {
     const at = carried();
     // a query too nested for chips only goes, stands alone or is negated
-    if (at && at.term < 0) return undefined;
-    if (key === "add") return clauses().length;
-    if (key === "negate" && !at) return clauses().length;
-    // on a tab the gap stays open, empty: closing it would move the tab from under the pointer
-    if (key?.startsWith("join-") || key?.startsWith("and-")) return insertAt();
-    if (key !== "field") return undefined;
-    const index = gapAt(x);
+    if (at && at.term < 0) return {};
+    if (key === "add") return { gap: clauses().length };
+    if (key === "negate" && !at) return { gap: clauses().length };
+    // on a tab the preview stays open, empty: closing it would move the tab from under the pointer
+    if (key?.startsWith("and-")) return { gap: insertAt(), join: joinAt() };
+    if (key !== "field") return {};
+    const found = aimAt(x);
+    if (found.join !== undefined) return found;
     // right before or after a lone chip carried out of its own place: that is where it is already
     const clause = at && clauses()[at.clause];
     const alone = at && at.part === undefined && clause && !("raw" in clause) && clause.terms.length === 1;
-    if (alone && (index === at.clause || index === at.clause + 1)) return undefined;
-    return index;
+    if (alone && (found.gap === at.clause || found.gap === at.clause + 1)) return {};
+    return found;
   };
 
   /** A drop shows where its chip went; the row does not jump to the text field after it. */
@@ -410,18 +429,19 @@ export default function SearchBox(props: { stuck: boolean }) {
           best?.setAttribute("data-near", "");
           near = best;
         }
-        // the preview opens in the gap under the pointer, its neighbours sliding apart
-        const gap = insertion(x);
-        if (gap !== insertAt()) {
+        // the preview opens in the gap or the group under the pointer, its neighbours sliding apart
+        const next = aim(x);
+        if (next.gap !== insertAt() || next.join !== joinAt()) {
           const play = snapshot();
-          setInsertAt(gap);
+          setInsertAt(next.gap);
+          setJoinAt(next.join);
           flush();
           play();
         }
         // the line of chips itself, not the tabs over and under it (a tag passes those on its way)
         const box = row.getBoundingClientRect();
         const pad = parseFloat(getComputedStyle(row).paddingTop);
-        if (y < box.top + pad || y > box.bottom - pad || x < box.left || x > box.right) return;
+        if (y < box.top + pad || y > box.bottom || x < box.left || x > box.right) return;
         const edge = 48;
         const speed = x < box.left + edge ? -(box.left + edge - x) : x > box.right - edge ? x - (box.right - edge) : 0;
         if (speed) {
@@ -435,6 +455,7 @@ export default function SearchBox(props: { stuck: boolean }) {
         window.removeEventListener("pointermove", track, true);
         cancelAnimationFrame(frame);
         setInsertAt(undefined);
+        setJoinAt(undefined);
         near?.removeAttribute("data-near");
         markEdges();
       };
@@ -454,7 +475,7 @@ export default function SearchBox(props: { stuck: boolean }) {
     // let go off the box, a carried chip leaves the query; on a place, it goes there
     // the copy then lands on the chip the drop made, goes home when nothing changed, or fades when the chip left
     const stop = onDrop(
-      (what, key) => {
+      (what, key, x) => {
         if (key === "outside") {
           if (!carried()) return;
           place(what, "remove");
@@ -462,9 +483,10 @@ export default function SearchBox(props: { stuck: boolean }) {
         }
         if (!key || !targets.has(key)) return;
         const before = currentQuery();
-        // on the chips, it goes into the gap the preview opened
-        const gap = insertAt();
-        place(what, key === "field" && gap !== undefined ? { before: gap } : targets.get(key)!);
+        // on the chips, it goes where the preview shows, read again where it was let go (a quick
+        // drop can beat the frame that moves the preview)
+        const { gap, join } = key === "field" ? aim(x, key) : {};
+        place(what, join !== undefined ? { join } : gap !== undefined ? { before: gap } : targets.get(key)!);
         if (currentQuery() === before) return;
         // the query changed, so the caret effect runs once for it: that run leaves the row be
         landing = true;
@@ -586,7 +608,7 @@ export default function SearchBox(props: { stuck: boolean }) {
                 >
                   {(group) => (
                     <span
-                      class={{ clause: true, "chip-group": group().terms.length > 1, over: over() === `join-${index()}` }}
+                      class={{ clause: true, "chip-group": group().terms.length > 1 || joinAt() === index(), over: joinAt() === index() }}
                       style={{ order: 2 * index() + 2 }}
                       data-flip={clauseKey(group().terms)}
                     >
@@ -612,11 +634,16 @@ export default function SearchBox(props: { stuck: boolean }) {
                           </>
                         )}
                       </For>
-                      {/* a tab hanging under the chip: dropped there, the tag joins it with "or" */}
-                      <Show when={canJoin(index())}>
-                        <span class={{ "or-tab": true, over: over() === `join-${index()}` }} {...target(`join-${index()}`, { join: index() })}>
-                          {t().drop.or}
-                        </span>
+                      {/* over the middle of a chip, the group it would make: "or" and the tag, in its frame */}
+                      <Show when={joinAt() === index() && preview()}>
+                        {(chip) => (
+                          <span class={{ "join-preview": true, idle: over() !== "field" }} aria-hidden="true">
+                            <span class="chip-op">{t().or}</span>
+                            <span class={{ chip: true, slot: true, neg: chip().neg }} data-ns={namespaceKey(chip().raw)}>
+                              <TagLabel tag={chip().raw} />
+                            </span>
+                          </span>
+                        )}
                       </Show>
                     </span>
                   )}

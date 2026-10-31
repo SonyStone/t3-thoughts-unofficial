@@ -7,12 +7,12 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 const q = () => page.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
-const state = () => page.evaluate(() => ({ dragging: !!document.querySelector(".search.dragging"), tabs: document.querySelectorAll(".or-tab").length, ghosts: document.querySelectorAll(".drag-ghost").length }));
+const state = () => page.evaluate(() => ({ dragging: !!document.querySelector(".search.dragging"), tabs: document.querySelectorAll(".and-tab").length, ghosts: document.querySelectorAll(".drag-ghost").length }));
 const base = "open-source -business ui";
 async function tryDrag(name, sourceText, to) {
   await page.goto("about:blank");
   await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(base));
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(700);
   const a = await page.locator(".search .chip", { hasText: sourceText }).first().boundingBox();
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
@@ -29,12 +29,17 @@ async function tryDrag(name, sourceText, to) {
 }
 const center = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
 for (const src of ["open-source", "business", "ui"]) {
-  await tryDrag(`${src} -> or tab 0`, src, () => center(page.locator(".or-tab").first()));
-  await tryDrag(`${src} -> or tab last`, src, () => center(page.locator(".or-tab").last()));
+  // the middle of a chip: "or" with it
+  const others = () => page.locator(".search .chips > .clause:not(:has(.carried))");
+  await tryDrag(`${src} -> or first`, src, () => center(others().first()));
+  await tryDrag(`${src} -> or last`, src, () => center(others().last()));
   await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone.negate")));
   await tryDrag(`${src} -> only`, src, () => center(page.locator(".drop-zone", { hasText: "Only" })));
-  // the field between chips: the gap there (x 300 is between the first two)
-  await tryDrag(`${src} -> gap at x 300`, src, async () => ({ x: 300, y: 600 }));
+  // the gap right after a chip: a chip of its own there
+  await tryDrag(`${src} -> gap after first`, src, async () => {
+    const b = await others().first().boundingBox();
+    return { x: b.x + b.width + 4, y: b.y + b.height / 2 };
+  });
   await tryDrag(`${src} -> out`, src, async () => ({ x: 700, y: 880 }));
 }
 // inside an "or" group, the "and" tab over an alternative makes (it and the tag)
@@ -108,7 +113,7 @@ await browser.close();
   }
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
   await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone.negate")));
-  await dragTag("many: tag -> or under harness", "workflow", () => mid(p3.locator(".or-tab").nth(2)));
+  await dragTag("many: tag -> or under harness", "workflow", () => mid(p3.locator(".search .chips > .clause", { hasText: "harness" })));
   await dragTag("many: and tab in group", "workflow", async () => {
     console.log("  and tabs over:", await p3.evaluate(() => [...document.querySelectorAll(".and-tab")].map((el) => el.nextElementSibling?.textContent)));
     return mid(p3.locator(".and-tab").nth(1));
@@ -117,10 +122,12 @@ await browser.close();
   await dragTag("many: scroll right, or last", "workflow", async () => {
     const row = await p3.locator(".chips").boundingBox();
     const before = await p3.evaluate(() => document.querySelector(".chips").scrollLeft);
-    await p3.mouse.move(row.x + row.width - 12, row.y + row.height / 2, { steps: 5 });
+    // along the line of chips, near its right end (the row reaches up over the box for the "and" tabs)
+    const line = await p3.locator(".search .chips > .clause").first().boundingBox();
+    await p3.mouse.move(row.x + row.width - 12, line.y + line.height / 2, { steps: 5 });
     await p3.waitForTimeout(1500);
     console.log("  row scrollLeft:", before, "->", await p3.evaluate(() => document.querySelector(".chips").scrollLeft));
-    return mid(p3.locator(".or-tab").last());
+    return mid(p3.locator(".search .chips > .clause:not(:has(.carried))").last());
   });
   // an excluded tag counts as used in the cloud
   console.log("excluded ui marked used".padEnd(28), "->", await p3.locator(".hero-cloud .tag.active.excluded", { hasText: "ui" }).count());
@@ -172,8 +179,8 @@ await browser.close();
   await dragPart("part ui -> without", part("ui"), () => mid(p4.locator(".drop-zone.negate")));
   await dragPart("part ui -> only", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Only" })));
   await dragPart("part ui -> out", part("ui"), async () => ({ x: 700, y: 880 }));
-  await dragPart("part ui -> own or", part("ui"), () => mid(p4.locator(".or-tab").nth(1)));
-  await dragPart("part ui -> or of agents", part("ui"), () => mid(p4.locator(".or-tab").last()));
+  await dragPart("part ui -> own or", part("ui"), () => mid(p4.locator(".search .chip", { hasText: "kind:repost" })));
+  await dragPart("part ui -> or of agents", part("ui"), () => mid(p4.locator(".search .chips > .clause", { hasText: "agents" })));
   await dragPart("part ui -> and kind:repost", part("ui"), () => mid(p4.locator(".and-tab").first()));
   await dragPart("part p-v-f -> add", part("prompts-vs-features"), () => mid(p4.locator(".drop-add")));
   await dragPart("cloud ui (a part) -> add", fromCloud("ui"), () => mid(p4.locator(".drop-add")));

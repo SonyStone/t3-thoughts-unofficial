@@ -455,10 +455,12 @@ main.on-hero {
   order: -1;
 }
 
-/* the chips stay one line: what does not fit scrolls sideways, fading out at that side */
+/* the chips stay one line: what does not fit scrolls sideways, fading out at that side (and it
+   is their offset parent, so the drag reads where they stand while they slide) */
 .chips {
   --fade-l: 0px;
   --fade-r: 0px;
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;
@@ -487,13 +489,13 @@ main.on-hero {
   flex: none;
 }
 
-/* while dragging, the chips give way to the zones, and the row reaches over and under the
-   box (padding the margins take back) so the "and" and "or" tabs show; off the chips it lets
-   the pointer through to what is under it */
+/* while dragging, the chips give way to the zones, and the row reaches over the box (padding
+   the margin takes back) so the "and" tabs show; off the chips it lets the pointer through to
+   what is under it */
 .search.dragging .chips {
   flex: 0 1 auto;
-  margin-block: calc(-1 * var(--tab) - 6px);
-  padding-block: calc(var(--tab) + 6px);
+  margin-top: calc(-1 * var(--tab) - 6px);
+  padding-top: calc(var(--tab) + 6px);
   pointer-events: none;
 }
 
@@ -672,12 +674,6 @@ main.on-hero {
   gap: 6px;
 }
 
-.clause.over {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: 10px;
-}
-
 .chip-op {
   color: var(--muted);
   font-family: var(--mono);
@@ -785,42 +781,6 @@ main.on-hero {
   border-color: #e66767;
 }
 
-/* a tab hanging from under each chip while dragging, out of the box: drop here for "or" */
-.or-tab {
-  position: absolute;
-  top: calc(100% - 1px);
-  left: 0;
-  z-index: 6;
-  display: grid;
-  place-items: end center;
-  width: 100%;
-  height: var(--tab);
-  padding-bottom: 10px;
-  border: 1px dashed var(--muted);
-  border-top: 0;
-  border-radius: 0 0 10px 10px;
-  background: rgba(23, 20, 28, 0.96);
-  color: var(--text-2);
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  /* it slides out from under the chip when a drag starts, and leans out to the pointer */
-  animation: tab-down 0.18s cubic-bezier(0.2, 0, 0, 1) backwards;
-  transition:
-    height 0.15s cubic-bezier(0.2, 0, 0, 1),
-    border-color 0.15s,
-    background-color 0.15s,
-    color 0.15s;
-}
-
-@keyframes tab-down {
-  from {
-    clip-path: inset(0 0 100% 0);
-  }
-  to {
-    clip-path: inset(0);
-  }
-}
-
 @keyframes tab-up {
   from {
     clip-path: inset(100% 0 0 0);
@@ -830,25 +790,17 @@ main.on-hero {
   }
 }
 
-.or-tab[data-near],
 .and-tab[data-near] {
   height: calc(var(--tab) + 3px);
   border-color: var(--text-2);
   color: var(--text);
 }
 
-.or-tab.over,
 .and-tab.over {
   height: calc(var(--tab) + 5px);
 }
 
-.clause:has(.or-tab) .chip {
-  border-color: var(--muted);
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-}
-
-/* the mirror of the "or" tab: over each chip while dragging, drop here for "and" */
+/* inside an "or" group, a tab over each alternative while dragging: drop here for "and" */
 .term {
   position: relative;
   display: inline-flex;
@@ -905,14 +857,20 @@ main.on-hero {
   border-color: var(--accent);
 }
 
-.or-tab.over {
-  border-style: solid;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, var(--panel));
-  color: var(--text);
+/* over the middle of a chip: the group it would make, "or" and the tag in its frame */
+.join-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  animation: slot-in 0.2s cubic-bezier(0.2, 0, 0, 1) backwards;
 }
 
-.clause:has(.or-tab.over) .chip {
+.join-preview.idle {
+  opacity: 0;
+}
+
+.clause.over {
+  border-style: solid;
   border-color: var(--accent);
 }
 
@@ -1012,7 +970,6 @@ main.on-hero {
   .drag-ghost,
   [data-held],
   [data-drag-source],
-  .or-tab,
   .and-tab,
   .chip.slot,
   .drop-add,

@@ -55,7 +55,8 @@ async function run(name, grab, to) {
 }
 
 const chip = (text) => () => page.locator(".search .chip[data-flip]", { hasText: text }).first();
-await run("or-tab", chip("open-source"), () => center(page.locator(".or-tab").last()));
+// on the middle of a chip: "or" with it
+await run("or-chip", chip("open-source"), () => center(chip("ui")()));
 await run("trace", chip("ui"), () => center(chip("ui")()));
 await run("nowhere", chip("ui"), async () => ({ x: 700, y: 120 }));
 await run("out", chip("ui"), async () => ({ x: 700, y: 880 }));
