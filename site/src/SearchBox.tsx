@@ -43,14 +43,15 @@ export default function SearchBox(props: { stuck: boolean }) {
   const [active, setActive] = createSignal(0);
 
   const clauses = createMemo(() => toClauses(route().q));
-  // tags for one word; the words themselves as a text search, last, for anything that is not all tags
+  // tags for one word; the words themselves as a text search, last, for anything that is not all
+  // tags; a term the search knows (a field, kind:reply) stays as it is, and a quoted phrase is text
   const options = createMemo((): [string, number][] => {
     const value = draft().trim();
     if (!focused() || !value) return [];
     const words = value.split(/\s+/);
     if (words.length > 1) return words.every(knowsTerm) ? [] : [[textTerm(value), -1]];
     const tags = suggest(value.replace(/^[-!]/, ""));
-    return knowsTerm(value) && tags.length > 0 ? tags : [...tags, [textTerm(value), -1]];
+    return knowsTerm(value) && !/^[-!]?"/.test(value) ? tags : [...tags, [textTerm(value), -1]];
   });
   /**
    * On a phone, the search being edited is a screen of its own: the box at the top, the tags
