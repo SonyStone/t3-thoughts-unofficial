@@ -731,7 +731,16 @@ main.on-hero {
   }
 }
 
-.search.dragging .search-field input,
+/* the text field gives its room to the zones but stays on the page: hidden, it would lose the
+   focus, and a phone would put its keyboard away mid-drag */
+.search.dragging .search-field input {
+  flex: 0 0 1px;
+  width: 1px;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+}
+
 .search.dragging .search-kbd {
   display: none;
 }
@@ -988,6 +997,100 @@ main.on-hero {
   }
 }
 
+/* On a phone, editing the search is a screen of its own (SearchBox: editing): the box at the
+   top with Done beside it, the tags under it down to the keyboard (the visual viewport, which
+   the script follows), the page frozen behind it. A header holding it gives up what would
+   make it the box's frame instead of the window's. */
+.bar:has(.search.editing),
+.topnav:has(.search.editing) {
+  z-index: 40;
+  transform: none;
+  backdrop-filter: none;
+}
+
+.search.editing {
+  position: fixed;
+  top: var(--view-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: grid;
+  grid-template: "field done" auto "drop drop" minmax(0, 1fr) / minmax(0, 1fr) auto;
+  gap: 10px 8px;
+  height: var(--view-height, 100vh);
+  max-width: none;
+  margin: 0;
+  padding: 12px 12px 0;
+  background: rgba(13, 11, 16, 0.97);
+}
+
+/* the screen's colour goes on under the keyboard: a keyboard that changes height (its
+   suggestion strip) never shows the page through a gap */
+.search.editing::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  height: 100vh;
+  background: inherit;
+}
+
+.search.editing .search-field {
+  grid-area: field;
+  box-shadow: none;
+  /* a backdrop filter would make the box, not the screen, the frame of the docked zones */
+  backdrop-filter: none;
+}
+
+/* the "and" tabs hang over the chips while dragging: the box steps down to make them room */
+.search.editing.dragging .search-field {
+  margin-top: calc(var(--tab) + 6px);
+}
+
+.search-done {
+  grid-area: done;
+  align-self: center;
+  padding: 10px 6px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.search.editing .search-drop {
+  grid-area: drop;
+  position: static;
+  max-height: none;
+  min-height: 0;
+  overscroll-behavior: contain;
+  /* the zones dock over its last part while dragging */
+  padding-bottom: 76px;
+  border-bottom: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: none;
+}
+
+/* the zones dock at the bottom of the screen, right over the keyboard, under the thumb */
+.search.editing .drop-board {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 7;
+  height: 64px;
+  margin: 0;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 0;
+  background: var(--panel);
+}
+
+.search.editing .drop-board > * {
+  border-radius: 0;
+}
+
 .search-drop {
   position: absolute;
   top: calc(100% + 8px);
@@ -1231,7 +1334,7 @@ main.on-hero {
 
 .tag-menu {
   position: fixed;
-  z-index: 30;
+  z-index: 45;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;
@@ -2843,13 +2946,14 @@ footer {
     display: none;
   }
 
+  /* the zones as a line of their own under the chips: the chips stay where they were, so the
+     zones never open under a finger holding one */
   .drop-board {
-    order: -1;
     flex-basis: 100%;
     width: auto;
     min-height: 48px;
-    margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 44px -14px;
-    border-bottom: 1px dashed var(--line-strong);
+    margin: 8px calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) -14px;
+    border-top: 1px dashed var(--line-strong);
   }
 
   .drop-board > :first-child {
@@ -2862,11 +2966,11 @@ footer {
   }
 
   .drop-board > :first-child {
-    border-top-left-radius: 13px;
+    border-bottom-left-radius: 13px;
   }
 
   .drop-board > :last-child {
-    border-top-right-radius: 13px;
+    border-bottom-right-radius: 13px;
   }
 
   .drop-zone {

@@ -12,6 +12,9 @@ import { openAt, openTagMenu } from "./TagMenu";
 /** Where a dragged tag or chip can land: a place among the chips, or one of the big zones. */
 type Target = Drop | "negate" | "remove" | "only" | { andWith: { clause: number; term: number } };
 
+/** A phone: there editing the search is a screen of its own (see `editing`). */
+const PHONE = window.matchMedia("(max-width: 700px)");
+
 /** A space ends a term unless it sits inside an open quote. */
 const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
 
@@ -48,7 +51,25 @@ export default function SearchBox(props: { stuck: boolean }) {
     const tags = suggest(value.replace(/^[-!]/, ""));
     return knowsTerm(value) && tags.length > 0 ? tags : [...tags, [textTerm(value), -1]];
   });
-  const showCloud = () => focused() && props.stuck && !draft().trim();
+  /**
+   * On a phone, the search being edited is a screen of its own: the box at the top, the tags
+   * under it down to the keyboard, the page frozen behind. It stays until Done or Escape, not
+   * until the field loses focus: a chip tapped for its menu takes the focus, and a keyboard put
+   * away still leaves the tags to pick from.
+   */
+  const [editing, setEditing] = createSignal(false);
+  /** Where the page was when the field was pressed, before the browser scrolled it into view. */
+  let pressedAt: number | undefined;
+  const startEditing = () => {
+    if (PHONE.matches && !editing()) setEditing(true);
+  };
+  /** A tag or chip: what a finger presses to pick up or open a menu, never to type in. */
+  const grabs = (el: HTMLElement) => !!el.closest(".tag, .chip, .part");
+  const stopEditing = () => {
+    input?.blur();
+    setEditing(false);
+  };
+  const showCloud = () => !draft().trim() && ((focused() && props.stuck) || editing());
 
   /** Known terms become chips of their own; anything else is one text search chip. */
   /**
@@ -104,7 +125,7 @@ export default function SearchBox(props: { stuck: boolean }) {
   const onKeyDown = (event: KeyboardEvent) => {
     const list = options();
     if (event.key === "Escape") {
-      input?.blur();
+      stopEditing();
     } else if (event.key === "Backspace" && !draft() && caretAt() > 0) {
       // the chip before the caret comes back as text
       event.preventDefault();
@@ -367,6 +388,14 @@ export default function SearchBox(props: { stuck: boolean }) {
     return found;
   };
 
+  /**
+   * A zone that opened right under the pointer (the docked zones on a phone, under a tag picked
+   * up low on the screen): it takes nothing until the pointer has left it once, so a picked-up
+   * tag let go in place does not, say, keep only itself.
+   */
+  const [unarmed, setUnarmed] = createSignal<string | undefined>();
+  const lit = (key: string) => over() === key && unarmed() !== key;
+
   /** A drop shows where its chip went; the row does not jump to the text field after it. */
   let landing = false;
 
@@ -376,6 +405,45 @@ export default function SearchBox(props: { stuck: boolean }) {
     row.toggleAttribute("data-more-left", row.scrollLeft > 1);
     row.toggleAttribute("data-more-right", row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
   };
+
+  // editing on a phone: the page stays where it was, under a screen as tall as what the
+  // keyboard leaves (the visual viewport, which a fixed element does not follow by itself)
+  createEffect(
+    () => editing(),
+    (on) => {
+      if (!on || !root) return;
+      const box = root;
+      const y = pressedAt ?? window.scrollY;
+      pressedAt = undefined;
+      const body = document.body.style;
+      const was = body.cssText;
+      Object.assign(body, { position: "fixed", top: `-${y}px`, left: "0", right: "0" });
+      // focus that lands on a tag or chip here without leaving the field first (relatedTarget
+      // can be missing) goes back to the field too
+      const keep = (event: FocusEvent) => {
+        const to = event.target as HTMLElement;
+        if (box.contains(to) && grabs(to)) input?.focus({ preventScroll: true });
+      };
+      box.addEventListener("focusin", keep);
+      const view = window.visualViewport;
+      const fit = () => {
+        box.style.setProperty("--view-top", `${view?.offsetTop ?? 0}px`);
+        box.style.setProperty("--view-height", `${view?.height ?? window.innerHeight}px`);
+      };
+      fit();
+      view?.addEventListener("resize", fit);
+      view?.addEventListener("scroll", fit);
+      return () => {
+        box.removeEventListener("focusin", keep);
+        view?.removeEventListener("resize", fit);
+        view?.removeEventListener("scroll", fit);
+        box.style.removeProperty("--view-top");
+        box.style.removeProperty("--view-height");
+        body.cssText = was;
+        window.scrollTo({ top: y, behavior: "instant" });
+      };
+    },
+  );
 
   // the text field is where the caret is and where new chips go: the row keeps it in view
   createEffect(
@@ -410,6 +478,7 @@ export default function SearchBox(props: { stuck: boolean }) {
       let frame = 0;
       // the tab nearest the pointer leans out to meet it
       let near: Element | undefined;
+      let first = true;
       const track = (event: PointerEvent) => {
         x = event.clientX;
         y = event.clientY;
@@ -417,6 +486,10 @@ export default function SearchBox(props: { stuck: boolean }) {
       const step = () => {
         frame = requestAnimationFrame(step);
         if (!row) return;
+        // the zones only: a chip moved a little along the chips is a move all the same
+        if (first) setUnarmed(["add", "negate", "only"].includes(over() ?? "") ? over() : undefined);
+        else if (unarmed() && over() !== unarmed()) setUnarmed(undefined);
+        first = false;
         let best: Element | undefined;
         let bestDistance = 40;
         for (const tab of row.querySelectorAll(".or-tab, .and-tab")) {
@@ -456,6 +529,7 @@ export default function SearchBox(props: { stuck: boolean }) {
         cancelAnimationFrame(frame);
         setInsertAt(undefined);
         setJoinAt(undefined);
+        setUnarmed(undefined);
         near?.removeAttribute("data-near");
         markEdges();
       };
@@ -481,7 +555,7 @@ export default function SearchBox(props: { stuck: boolean }) {
           place(what, "remove");
           return () => "gone";
         }
-        if (!key || !targets.has(key)) return;
+        if (!key || !targets.has(key) || key === unarmed()) return;
         const before = currentQuery();
         // on the chips, it goes where the preview shows, read again where it was let go (a quick
         // drop can beat the frame that moves the preview)
@@ -574,9 +648,12 @@ export default function SearchBox(props: { stuck: boolean }) {
   };
 
   return (
-    <div class={{ search: true, focused: focused(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
+    <div class={{ search: true, focused: focused(), editing: editing(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
       <div
         class={{ "search-field": true, over: over() === "field" }}
+        onPointerDown={() => {
+          if (!editing()) pressedAt = window.scrollY;
+        }}
         onClick={(event) => {
           // a click on the empty part of the box puts the caret after the last chip
           if ((event.target as HTMLElement).matches(".search-field, .chips")) setCaret(undefined);
@@ -674,8 +751,18 @@ export default function SearchBox(props: { stuck: boolean }) {
             spellcheck={false}
             aria-label={t().searchPlaceholder}
             onInput={(event) => onInput(event.currentTarget.value)}
-            onFocus={() => setFocused(true)}
-            onBlur={() => {
+            onFocus={() => {
+              setFocused(true);
+              startEditing();
+            }}
+            onBlur={(event) => {
+              // editing on a phone, a tag or chip pressed on the screen takes the focus (a long
+              // press focuses a link): the field takes it back, keeping the keyboard and the text
+              const to = event.relatedTarget as HTMLElement | null;
+              if (editing() && to && root?.contains(to) && grabs(to)) {
+                input?.focus({ preventScroll: true });
+                return;
+              }
               setCaret(undefined);
               setFocused(false);
               commit(draft());
@@ -693,14 +780,14 @@ export default function SearchBox(props: { stuck: boolean }) {
             </Show>
           </span>
           <span class="drop-board">
-            <span class={{ "drop-zone": true, negate: true, over: over() === "negate" }} {...target("negate", "negate")}>
+            <span class={{ "drop-zone": true, negate: true, over: lit("negate") }} {...target("negate", "negate")}>
               {/* a negated chip loses its minus there */}
               <Show when={carriedNeg()} fallback={<><b>−</b> {t().drop.negate}</>}>
                 <b>+</b> {t().drop.include}
               </Show>
             </span>
             {/* there even when it would change nothing, so the zones do not move */}
-            <span class={{ "drop-zone": true, off: !showOnly(), over: showOnly() && over() === "only" }} {...(showOnly() ? target("only", "only") : {})}>
+            <span class={{ "drop-zone": true, off: !showOnly(), over: showOnly() && lit("only") }} {...(showOnly() ? target("only", "only") : {})}>
               <b>=</b> {t().drop.only}
             </span>
           </span>
@@ -722,6 +809,12 @@ export default function SearchBox(props: { stuck: boolean }) {
           <kbd class="search-kbd">⌘K</kbd>
         </Show>
       </div>
+
+      <Show when={editing()}>
+        <button class="search-done" onClick={stopEditing}>
+          {t().done}
+        </button>
+      </Show>
 
       <Show when={options().length > 0 || showCloud()}>
         {/* mousedown keeps focus in the input, so its blur doesn't close the dropdown first */}
