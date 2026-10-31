@@ -1015,13 +1015,11 @@ main.on-hero {
   right: 0;
   z-index: 40;
   display: grid;
-  grid-template: "field done" auto "drop drop" minmax(0, 1fr) / minmax(0, 1fr) auto;
-  gap: 8px 4px;
+  grid-template: "done field" auto "drop drop" minmax(0, 1fr) / auto minmax(0, 1fr);
   height: var(--view-height, 100vh);
   max-width: none;
   margin: 0;
-  padding: 8px 8px 0;
-  background: rgba(13, 11, 16, 0.97);
+  background: var(--bg);
 }
 
 /* the screen's colour goes on under the keyboard: a keyboard that changes height (its
@@ -1036,9 +1034,9 @@ main.on-hero {
   background: inherit;
 }
 
-/* the box is all chips here: no icon, and clearing moves to the top of the list */
+/* edge to edge, as a phone's search screens are: back, the chips, clear, in one flat bar
+   over the list; no search icon, and no link off the page */
 .search.editing .search-icon,
-.search.editing .search-clear,
 .search.editing .cloud-more {
   display: none;
 }
@@ -1051,7 +1049,12 @@ main.on-hero {
 
 .search.editing .search-field {
   grid-area: field;
-  padding-left: 10px;
+  min-height: 56px;
+  padding-left: 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
   box-shadow: none;
   /* a backdrop filter would make the box, not the screen, the frame of the docked zones */
   backdrop-filter: none;
@@ -1064,14 +1067,23 @@ main.on-hero {
 
 .search-done {
   grid-area: done;
-  align-self: center;
-  padding: 8px 4px;
+  display: grid;
+  place-items: center;
+  width: 48px;
   border: 0;
+  border-bottom: 1px solid var(--line);
   background: none;
-  color: var(--accent);
-  font: inherit;
-  font-weight: 600;
+  color: var(--text);
   cursor: pointer;
+}
+
+.search-done .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.search.editing .search-clear {
+  background: none;
 }
 
 .search.editing .search-drop {
@@ -1080,10 +1092,12 @@ main.on-hero {
   max-height: none;
   min-height: 0;
   overscroll-behavior: contain;
-  padding: 10px 12px;
+  padding: 12px 16px;
   /* it ends over the docked zones */
   margin-bottom: 52px;
-  border-radius: var(--radius) var(--radius) 0 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
   box-shadow: none;
 }
 
@@ -1133,15 +1147,7 @@ main.on-hero {
   white-space: nowrap;
 }
 
-.says-clear {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
+
 
 .search-drop {
   position: absolute;
