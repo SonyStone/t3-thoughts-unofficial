@@ -147,7 +147,7 @@ export default function SearchBox(props: { stuck: boolean }) {
       const chip = clauses()[index];
       removeAt(index);
       setCaret(caret() === undefined ? undefined : index);
-      setDraft("raw" in chip ? chip.raw : toQuery([chip]));
+      setDraft(asDraft(chip));
     } else if (event.key === "Delete" && !draft() && caretAt() < clauses().length) {
       event.preventDefault();
       removeAt(caretAt());
@@ -175,6 +175,20 @@ export default function SearchBox(props: { stuck: boolean }) {
       event.preventDefault();
       commit(draft());
     }
+  };
+
+  /**
+   * A chip taken back into the field, as it would be typed: a text search as its words (in
+   * quotes when they would read as tags), anything else as its query.
+   */
+  const asDraft = (chip: Clause) => {
+    if ("raw" in chip) return chip.raw;
+    const query = toQuery([chip]);
+    const text = /^(-?)text:(?:"([^"]*)"|(\S+))$/.exec(query);
+    if (!text) return query;
+    const [, neg, quoted, bare] = text;
+    const words = quoted ?? bare;
+    return words.split(/\s+/).every(knowsTerm) ? `${neg}"${words}"` : `${neg}${words}`;
   };
 
   const isOneKnownWord = (text: string) => /^\S+$/.test(text.trim()) && !openQuote(text) && knowsTerm(text);
