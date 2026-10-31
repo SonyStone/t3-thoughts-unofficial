@@ -943,6 +943,28 @@ main.on-hero {
   margin-right: -5px;
 }
 
+/* where the dragged tag would go: a see-through chip of it, opening in the gap */
+.chip.slot {
+  border: 1px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: slot-in 0.2s cubic-bezier(0.2, 0, 0, 1) backwards;
+}
+
+/* kept open while the pointer is on a tab, so nothing moves under it */
+.chip.slot.idle {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+@keyframes slot-in {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+
 /* the chip being carried stays behind, dimmed, until it is dropped (a tag from the page that
    the search has carries its chip too) */
 .chip.carried,
@@ -956,6 +978,7 @@ main.on-hero {
   [data-drag-source],
   .or-tab,
   .and-tab,
+  .chip.slot,
   .drop-board {
     animation: none;
     transition: none;

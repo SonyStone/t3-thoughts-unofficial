@@ -61,5 +61,50 @@ await run("nowhere", chip("ui"), async () => ({ x: 700, y: 120 }));
 await run("out", chip("ui"), async () => ({ x: 700, y: 880 }));
 await run("without", chip("open-source"), () => center(page.locator(".drop-zone", { hasText: "Without" })));
 await run("and-tab", chip("ui"), () => center(page.locator(".and-tab").first()));
+
+// a tag from the cloud: over "Add" a preview of it opens after the last chip; between two
+// chips it opens there, and the drop puts the tag there
+{
+  const q3 = "company:anthropic -harness -competition";
+  await page.goto("about:blank");
+  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(q3));
+  await page.waitForTimeout(400);
+  const box = await page.locator(".search").boundingBox();
+  clip = { x: box.x - 10, y: box.y - 70, width: box.width + 20, height: box.height + 140 };
+  const slot = () => page.evaluate(() => {
+    const el = document.querySelector(".search .slot");
+    if (!el) return null;
+    const row = [...el.parentElement.children].filter((c) => getComputedStyle(c).display !== "none").sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
+    return row.map((c) => (c === el ? `[${c.textContent}]` : c.textContent.replace(/\s+/g, " ").trim())).join(" ");
+  });
+  const t = await center(page.locator(".hero-cloud .tag", { hasText: "model:claude" }).first());
+  await page.mouse.move(t.x, t.y);
+  await page.mouse.down();
+  await page.mouse.move(t.x + 10, t.y - 10, { steps: 3 });
+  const add = await center(page.locator(".drop-zone.add"));
+  await page.mouse.move(add.x, add.y, { steps: 10 });
+  await page.waitForTimeout(250);
+  await shot("gap-1-add");
+  console.log("over add".padEnd(24), "->", await slot());
+  const harness = await page.locator(".search .clause", { hasText: "harness" }).boundingBox();
+  const competition = await page.locator(".search .clause", { hasText: "competition" }).boundingBox();
+  const between = { x: (harness.x + harness.width + competition.x) / 2, y: harness.y + harness.height / 2 };
+  await page.mouse.move(between.x, between.y, { steps: 10 });
+  await page.waitForTimeout(250);
+  await shot("gap-2-between");
+  console.log("between".padEnd(24), "->", await slot());
+  // standing still there, the preview stays put (no flicker between two gaps)
+  const seen = new Set();
+  for (let i = 0; i < 8; i++) {
+    await page.mouse.move(between.x + (i % 2), between.y);
+    await page.waitForTimeout(40);
+    seen.add(await slot());
+  }
+  console.log("still".padEnd(24), "->", [...seen]);
+  await page.mouse.up();
+  await page.waitForTimeout(800);
+  await shot("gap-3-dropped");
+  console.log("dropped between".padEnd(24), "->", JSON.stringify(await q()));
+}
 console.log("errors:", errors);
 await browser.close();

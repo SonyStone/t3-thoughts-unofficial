@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
 import { andWith, applyTag, dropTag, editTerm, moveTerm, toClauses, toQuery, type At, type Clause, type Drop, type Term } from "./clauses";
 import { draggable, dragged, onDrop, over, still, type Dragged } from "./drag";
 import { t } from "./i18n";
@@ -289,6 +289,55 @@ export default function SearchBox(props: { stuck: boolean }) {
     markEdges();
     return el;
   };
+  /**
+   * Where the dragged tag would stand as a chip of its own, while it is over the chips or the
+   * "Add" zone: a preview of it opens there, and a drop on the chips puts it there.
+   */
+  const [insertAt, setInsertAt] = createSignal<number | undefined>();
+  /** What the preview shows: the dragged tag as its chip would look. */
+  const preview = () => {
+    const what = dragged();
+    if (!what) return undefined;
+    return what.kind === "tag" ? { raw: what.tag, neg: over() === "negate" } : { raw: what.raw, neg: what.neg !== (over() === "negate") };
+  };
+
+  /** The gap under the pointer: before the first chip whose middle is right of it, measured as if the preview were not there. */
+  const gapAt = (x: number) => {
+    if (!row) return clauses().length;
+    const open = insertAt();
+    const slot = row.querySelector(":scope > .slot");
+    const room = slot ? slot.getBoundingClientRect().width + 8 : 0;
+    let index = 0;
+    for (const el of row.querySelectorAll(":scope > .clause, :scope > .chip.raw")) {
+      const box = el.getBoundingClientRect();
+      // where it stands, not where its slide has got to: a gap read off a sliding chip would flip back and forth
+      const slide = parseFloat(getComputedStyle(el).translate) || 0;
+      const middle = box.left - slide + box.width / 2 - (open !== undefined && index >= open ? room : 0);
+      if (middle > x) break;
+      index++;
+    }
+    return index;
+  };
+
+  /** Where a drop would open a gap, if it would change anything there. */
+  const insertion = (x: number): number | undefined => {
+    const key = over();
+    const at = carried();
+    // a query too nested for chips only goes, stands alone or is negated
+    if (at && at.term < 0) return undefined;
+    if (key === "add") return clauses().length;
+    if (key === "negate" && !at) return clauses().length;
+    // on a tab the gap stays open, empty: closing it would move the tab from under the pointer
+    if (key?.startsWith("join-") || key?.startsWith("and-")) return insertAt();
+    if (key !== "field") return undefined;
+    const index = gapAt(x);
+    // right before or after a lone chip carried out of its own place: that is where it is already
+    const clause = at && clauses()[at.clause];
+    const alone = at && at.part === undefined && clause && !("raw" in clause) && clause.terms.length === 1;
+    if (alone && (index === at.clause || index === at.clause + 1)) return undefined;
+    return index;
+  };
+
   /** A drop shows where its chip went; the row does not jump to the text field after it. */
   let landing = false;
 
@@ -351,6 +400,14 @@ export default function SearchBox(props: { stuck: boolean }) {
           best?.setAttribute("data-near", "");
           near = best;
         }
+        // the preview opens in the gap under the pointer, its neighbours sliding apart
+        const gap = insertion(x);
+        if (gap !== insertAt()) {
+          const play = snapshot();
+          setInsertAt(gap);
+          flush();
+          play();
+        }
         // the line of chips itself, not the tabs over and under it (a tag passes those on its way)
         const box = row.getBoundingClientRect();
         const pad = parseFloat(getComputedStyle(row).paddingTop);
@@ -367,6 +424,7 @@ export default function SearchBox(props: { stuck: boolean }) {
       return () => {
         window.removeEventListener("pointermove", track, true);
         cancelAnimationFrame(frame);
+        setInsertAt(undefined);
         near?.removeAttribute("data-near");
         markEdges();
       };
@@ -394,7 +452,9 @@ export default function SearchBox(props: { stuck: boolean }) {
         }
         if (!key || !targets.has(key)) return;
         const before = currentQuery();
-        place(what, targets.get(key)!);
+        // on the chips, it goes into the gap the preview opened
+        const gap = insertAt();
+        place(what, key === "field" && gap !== undefined ? { before: gap } : targets.get(key)!);
         if (currentQuery() === before) return;
         // the query changed, so the caret effect runs once for it: that run leaves the row be
         landing = true;
@@ -554,6 +614,18 @@ export default function SearchBox(props: { stuck: boolean }) {
               </>
             )}
           </For>
+          <Show when={insertAt() !== undefined && preview()}>
+            {(chip) => (
+              <span
+                class={{ chip: true, slot: true, neg: chip().neg, idle: over() !== "field" && over() !== "add" && over() !== "negate" }}
+                style={{ order: 2 * insertAt()! + 1 }}
+                data-ns={namespaceKey(chip().raw)}
+                aria-hidden="true"
+              >
+                <TagLabel tag={chip().raw} />
+              </span>
+            )}
+          </Show>
           <input
             style={{ order: 2 * caretAt() + 1, width: caretAt() < clauses().length ? `max(2px, ${draft().length + 0.3}ch)` : undefined }}
             class={{ inside: caretAt() < clauses().length }}

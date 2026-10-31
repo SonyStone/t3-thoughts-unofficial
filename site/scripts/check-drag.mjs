@@ -33,7 +33,8 @@ for (const src of ["open-source", "business", "ui"]) {
   await tryDrag(`${src} -> or tab last`, src, () => center(page.locator(".or-tab").last()));
   await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone", { hasText: "Without" })));
   await tryDrag(`${src} -> only`, src, () => center(page.locator(".drop-zone", { hasText: "Only" })));
-  await tryDrag(`${src} -> back on itself`, src, async () => ({ x: 300, y: 600 }));
+  // the field between chips: the gap there (x 300 is between the first two)
+  await tryDrag(`${src} -> gap at x 300`, src, async () => ({ x: 300, y: 600 }));
   await tryDrag(`${src} -> out`, src, async () => ({ x: 700, y: 880 }));
 }
 // inside an "or" group, the "and" tab over an alternative makes (it and the tag)
