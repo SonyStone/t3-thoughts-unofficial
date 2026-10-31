@@ -49,7 +49,7 @@ const en = {
   impliedTag: "Not on the card itself: it follows from another tag (a model implies its company)",
   clear: "Clear search",
   searchFor: (words: string) => `Search the text for “${words}”`,
-  drop: { add: "Add (and)", negate: "Without", only: "Only this", and: "and", or: "or" },
+  drop: { add: "Add (and)", negate: "Without", include: "Include", only: "Only this", and: "and", or: "or" },
   tagMenu: {
     only: "Only this tag",
     and: "Narrow: and",
@@ -192,7 +192,7 @@ const ru: Dict = {
   impliedTag: "Этого тега нет на карточке: он следует из другого (модель подразумевает свою компанию)",
   clear: "Очистить поиск",
   searchFor: (words: string) => `Искать в тексте «${words}»`,
-  drop: { add: "Добавить (и)", negate: "Без", only: "Только это", and: "и", or: "или" },
+  drop: { add: "Добавить (и)", negate: "Без", include: "Включить", only: "Только это", and: "и", or: "или" },
   tagMenu: {
     only: "Только этот тег",
     and: "Сузить: и",

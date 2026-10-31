@@ -54,13 +54,15 @@ async function run(name, grab, to) {
   console.log(name.padEnd(24), "->", JSON.stringify(await q()), JSON.stringify(state));
 }
 
-const chip = (text) => () => page.locator(".search [data-flip]", { hasText: text }).first();
+const chip = (text) => () => page.locator(".search .chip[data-flip]", { hasText: text }).first();
 await run("or-tab", chip("open-source"), () => center(page.locator(".or-tab").last()));
 await run("trace", chip("ui"), () => center(chip("ui")()));
 await run("nowhere", chip("ui"), async () => ({ x: 700, y: 120 }));
 await run("out", chip("ui"), async () => ({ x: 700, y: 880 }));
-await run("without", chip("open-source"), () => center(page.locator(".drop-zone", { hasText: "Without" })));
+await run("without", chip("open-source"), () => center(page.locator(".drop-zone.negate")));
 await run("and-tab", chip("ui"), () => center(page.locator(".and-tab").first()));
+// a negated chip: the zone that negates offers to take its minus off
+await run("neg-include", chip("business"), () => center(page.locator(".drop-zone.negate")));
 
 // a tag from the cloud: over "Add" a preview of it opens after the last chip; between two
 // chips it opens there, and the drop puts the tag there
@@ -81,7 +83,7 @@ await run("and-tab", chip("ui"), () => center(page.locator(".and-tab").first()))
   await page.mouse.move(t.x, t.y);
   await page.mouse.down();
   await page.mouse.move(t.x + 10, t.y - 10, { steps: 3 });
-  const add = await center(page.locator(".drop-zone.add"));
+  const add = await center(page.locator(".drop-add"));
   await page.mouse.move(add.x, add.y, { steps: 10 });
   await page.waitForTimeout(250);
   await shot("gap-1-add");

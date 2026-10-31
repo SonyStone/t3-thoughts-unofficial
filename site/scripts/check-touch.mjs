@@ -44,7 +44,11 @@ const zone = (t) => () => center(page.locator(".drop-zone", { hasText: t }));
 await drag("chip workflow hold -> Without", chip("workflow"), zone("Without"), 600);
 await drag("chip workflow hold -> out", chip("workflow"), async () => ({ x: 200, y: 800 }), 600);
 await drag("tag swipe up (page scrolls)", tag("kind:post"), null);
-await drag("tag hold -> Add", tag("kind:post"), zone("Add"), 600);
+// on a phone the chips' line is where adding happens: past the last chip
+await drag("tag hold -> after chips", tag("kind:post"), async () => {
+  const b = await page.locator(".search .chips > .clause").last().boundingBox();
+  return { x: Math.min(b.x + b.width + 30, 370), y: b.y + b.height / 2 };
+}, 600);
 await drag("tag hold -> Without", tag("kind:post"), zone("Without"), 600);
 await drag("tag hold -> or under group", tag("kind:post"), () => center(page.locator(".or-tab").first()), 600);
 await drag("tag hold -> and over claude", tag("kind:post"), () => center(page.locator(".and-tab").nth(1)), 600);

@@ -218,6 +218,16 @@ export default function SearchBox(props: { stuck: boolean }) {
     const clause = at && clauses()[at.clause];
     return clause && !("raw" in clause) ? clause.terms.length : 0;
   };
+  /** The carried chip has a minus: "Without" would take it off. */
+  const carriedNeg = () => {
+    const at = carried();
+    const clause = at && clauses()[at.clause];
+    if (!at || !clause) return false;
+    if ("raw" in clause) return clause.raw.startsWith("-");
+    const term = clause.terms[at.term];
+    return !!(at.part === undefined ? term?.neg : term?.all?.[at.part]?.neg);
+  };
+
   // only the zones that would change something
   const showAdd = () => !carried() || (carried()!.term >= 0 && carriedGroupSize() > 1);
   const showOnly = () => clauses().length > (carried() && carriedGroupSize() === 1 ? 1 : 0);
@@ -646,22 +656,26 @@ export default function SearchBox(props: { stuck: boolean }) {
             onKeyDown={onKeyDown}
           />
         </span>
-        {/* while something is dragged, the free part of the box becomes big zones, one per action */}
+        {/* while something is dragged, the whole box adds it (after the chips, a hint says so); two
+            zones of their own, always the same size in the same place, negate it or keep only it */}
         <Show when={dragged()}>
-          <span class="drop-board">
+          {/* where adding would change nothing (a lone chip carried), it is only the box, unlabelled */}
+          <span class={{ "drop-add": true, over: showAdd() && over() === "add" }} {...(showAdd() ? target("add", { before: clauses().length }) : {})}>
             <Show when={showAdd()}>
-              <span class={{ "drop-zone": true, add: true, over: over() === "add" }} {...target("add", { before: clauses().length })}>
-                <b>+</b> {t().drop.add}
-              </span>
+              <b>+</b> {t().drop.add}
             </Show>
+          </span>
+          <span class="drop-board">
             <span class={{ "drop-zone": true, negate: true, over: over() === "negate" }} {...target("negate", "negate")}>
-              <b>−</b> {t().drop.negate}
+              {/* a negated chip loses its minus there */}
+              <Show when={carriedNeg()} fallback={<><b>−</b> {t().drop.negate}</>}>
+                <b>+</b> {t().drop.include}
+              </Show>
             </span>
-            <Show when={showOnly()}>
-              <span class={{ "drop-zone": true, over: over() === "only" }} {...target("only", "only")}>
-                <b>=</b> {t().drop.only}
-              </span>
-            </Show>
+            {/* there even when it would change nothing, so the zones do not move */}
+            <span class={{ "drop-zone": true, off: !showOnly(), over: showOnly() && over() === "only" }} {...(showOnly() ? target("only", "only") : {})}>
+              <b>=</b> {t().drop.only}
+            </span>
           </span>
         </Show>
         <Show when={route().q && !dragged()}>

@@ -551,7 +551,7 @@ main.on-hero {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 5px 11px;
+  padding: 7px 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-control);
   background: var(--panel-2);
@@ -684,12 +684,47 @@ main.on-hero {
   font-size: 0.75rem;
 }
 
-/* the free part of the search box while dragging: zones side by side, the box's full height */
+/* while dragging, the rest of the box adds what is let go there: after the chips a hint says
+   so, with no edge between it and the chips */
+.drop-add {
+  display: flex;
+  flex: 1 1 0;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  /* however many chips, past them there is room to add after the last */
+  min-width: 100px;
+  overflow: hidden;
+  order: 9998;
+  color: var(--muted);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  animation: board-in 0.2s cubic-bezier(0.2, 0, 0, 1) both;
+  transition: color 0.15s;
+}
+
+.drop-add b {
+  font-family: var(--mono);
+  font-size: 1.1rem;
+}
+
+.drop-add.over {
+  color: var(--text);
+}
+
+.search-field:has(.drop-add.over) {
+  border-color: var(--accent);
+}
+
+/* the two zones of their own: the same size in the same place on every drag, so a hand learns
+   where they are; the box's full height */
 .drop-board {
   display: flex;
-  flex: 1 0 360px;
+  flex: none;
+  width: 280px;
   align-self: stretch;
-  margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) 8px;
+  margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) calc(-1 * var(--pad-y)) auto;
   animation: board-in 0.2s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
@@ -718,12 +753,13 @@ main.on-hero {
 }
 
 .drop-zone {
-  flex: 1;
+  flex: 1 1 0;
 }
 
-/* adding is what a drag is for most of the time, so it gets most of the room */
-.drop-zone.add {
-  flex: 3;
+/* a zone that would change nothing for this tag stays in its place, faded */
+.drop-zone.off {
+  color: var(--muted);
+  opacity: 0.45;
 }
 
 .drop-board > :last-child {
@@ -979,6 +1015,7 @@ main.on-hero {
   .or-tab,
   .and-tab,
   .chip.slot,
+  .drop-add,
   .drop-board {
     animation: none;
     transition: none;
@@ -2844,9 +2881,15 @@ footer {
     flex: 1 1 100%;
   }
 
+  /* the chips' line is the whole of it here */
+  .drop-add {
+    display: none;
+  }
+
   .drop-board {
     order: -1;
     flex-basis: 100%;
+    width: auto;
     min-height: 48px;
     margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 44px -14px;
     border-bottom: 1px dashed var(--line-strong);

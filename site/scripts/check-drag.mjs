@@ -31,7 +31,7 @@ const center = async (loc) => { const b = await loc.boundingBox(); return { x: b
 for (const src of ["open-source", "business", "ui"]) {
   await tryDrag(`${src} -> or tab 0`, src, () => center(page.locator(".or-tab").first()));
   await tryDrag(`${src} -> or tab last`, src, () => center(page.locator(".or-tab").last()));
-  await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone", { hasText: "Without" })));
+  await tryDrag(`${src} -> without`, src, () => center(page.locator(".drop-zone.negate")));
   await tryDrag(`${src} -> only`, src, () => center(page.locator(".drop-zone", { hasText: "Only" })));
   // the field between chips: the gap there (x 300 is between the first two)
   await tryDrag(`${src} -> gap at x 300`, src, async () => ({ x: 300, y: 600 }));
@@ -66,7 +66,7 @@ await browser.close();
   await p2.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await p2.mouse.down();
   await p2.mouse.move(a.x + a.width / 2 + 15, a.y + 5, { steps: 3 });
-  const add = await p2.locator(".drop-zone", { hasText: "Add" }).boundingBox();
+  const add = await p2.locator(".drop-add").boundingBox();
   await p2.mouse.move(add.x + add.width / 2, add.y + add.height / 2, { steps: 5 });
   await p2.mouse.up();
   await p2.waitForTimeout(250);
@@ -107,7 +107,7 @@ await browser.close();
     console.log(name.padEnd(28), "->", JSON.stringify(await read()), "dimmed:", dimmed, "hidden:", hidden, "left dimmed:", await p3.locator("[data-drag-source]").count());
   }
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
-  await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone", { hasText: "Without" })));
+  await dragTag("many: tag -> without", "workflow", () => mid(p3.locator(".drop-zone.negate")));
   await dragTag("many: tag -> or under harness", "workflow", () => mid(p3.locator(".or-tab").nth(2)));
   await dragTag("many: and tab in group", "workflow", async () => {
     console.log("  and tabs over:", await p3.evaluate(() => [...document.querySelectorAll(".and-tab")].map((el) => el.nextElementSibling?.textContent)));
@@ -157,22 +157,26 @@ await browser.close();
     if (shot) await p4.screenshot({ path: shot, clip: { x: 0, y: 380, width: 1340, height: 300 } });
     const b = await to();
     await p4.mouse.move(b.x, b.y, { steps: 5 });
-    await p4.mouse.up();
+    // a preview opened on the way moves what comes after it: aim again, as an eye would
     await p4.waitForTimeout(250);
+    const c = await to();
+    await p4.mouse.move(c.x, c.y, { steps: 3 });
+    await p4.mouse.up();
+    await p4.waitForTimeout(700);
     console.log(name.padEnd(28), "->", JSON.stringify(await read()), "while carried:", JSON.stringify(left));
   }
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
   const part = (text) => () => p4.locator(".search .part", { hasText: text }).first();
   const fromCloud = (text) => () => p4.locator(".hero-cloud .tag", { hasText: text }).first();
-  await dragPart("part ui -> add", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })), "/tmp/part-drag.png");
-  await dragPart("part ui -> without", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Without" })));
+  await dragPart("part ui -> add", part("ui"), () => mid(p4.locator(".drop-add")), "/tmp/part-drag.png");
+  await dragPart("part ui -> without", part("ui"), () => mid(p4.locator(".drop-zone.negate")));
   await dragPart("part ui -> only", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Only" })));
   await dragPart("part ui -> out", part("ui"), async () => ({ x: 700, y: 880 }));
   await dragPart("part ui -> own or", part("ui"), () => mid(p4.locator(".or-tab").nth(1)));
   await dragPart("part ui -> or of agents", part("ui"), () => mid(p4.locator(".or-tab").last()));
   await dragPart("part ui -> and kind:repost", part("ui"), () => mid(p4.locator(".and-tab").first()));
-  await dragPart("part p-v-f -> add", part("prompts-vs-features"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })));
-  await dragPart("cloud ui (a part) -> add", fromCloud("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Add" })));
+  await dragPart("part p-v-f -> add", part("prompts-vs-features"), () => mid(p4.locator(".drop-add")));
+  await dragPart("cloud ui (a part) -> add", fromCloud("ui"), () => mid(p4.locator(".drop-add")));
   // a click on a part opens the menu for that tag, not for the group
   await p4.goto("http://localhost:5173/#/?q=" + encodeURIComponent(grouped));
   await p4.waitForTimeout(300);
