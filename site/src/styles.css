@@ -1066,9 +1066,8 @@ main.on-hero {
   max-height: none;
   min-height: 0;
   overscroll-behavior: contain;
-  /* the zones dock over its last part while dragging */
-  padding-bottom: 76px;
-  border-bottom: 0;
+  /* it ends over the docked zones */
+  margin-bottom: 64px;
   border-radius: var(--radius) var(--radius) 0 0;
   box-shadow: none;
 }
@@ -1089,6 +1088,16 @@ main.on-hero {
 
 .search.editing .drop-board > * {
   border-radius: 0;
+}
+
+/* not dragging, the zones only show where they are */
+.search.editing:not(.dragging) .drop-board {
+  pointer-events: none;
+  animation: none;
+}
+
+.search.editing:not(.dragging) .drop-zone {
+  opacity: 0.4;
 }
 
 /* the query in words, at the top of the dropdown */

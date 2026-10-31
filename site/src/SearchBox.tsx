@@ -773,13 +773,17 @@ export default function SearchBox(props: { stuck: boolean }) {
         </span>
         {/* while something is dragged, the whole box adds it (after the chips, a hint says so); two
             zones of their own, always the same size in the same place, negate it or keep only it */}
-        <Show when={dragged()}>
-          {/* where adding would change nothing (a lone chip carried), it is only the box, unlabelled */}
-          <span class={{ "drop-add": true, over: showAdd() && over() === "add" }} {...(showAdd() ? target("add", { before: clauses().length }) : {})}>
-            <Show when={showAdd()}>
-              <b>+</b> {t().drop.add}
-            </Show>
-          </span>
+        {/* on a phone's editing screen they stay docked over the keyboard, faded until a drag, so
+            the tags never lie under them */}
+        <Show when={dragged() || editing()}>
+          <Show when={dragged()}>
+            {/* where adding would change nothing (a lone chip carried), it is only the box, unlabelled */}
+            <span class={{ "drop-add": true, over: showAdd() && over() === "add" }} {...(showAdd() ? target("add", { before: clauses().length }) : {})}>
+              <Show when={showAdd()}>
+                <b>+</b> {t().drop.add}
+              </Show>
+            </span>
+          </Show>
           <span class="drop-board">
             <span class={{ "drop-zone": true, negate: true, over: lit("negate") }} {...target("negate", "negate")}>
               {/* a negated chip loses its minus there */}

@@ -32,7 +32,14 @@ async function edit() {
 
 /** Holds a tag of the list, moves along `path` (a function of the screen once the drag is on), lets go. */
 async function hold(text, path) {
-  const t = await page.locator(".search-drop .tag", { hasText: text }).first().boundingBox();
+  // a tag by its text, or the lowest one wholly in sight in the list, right over the zones
+  const t = text
+    ? await page.locator(".search-drop .tag", { hasText: text }).first().boundingBox()
+    : await page.evaluate(() => {
+        const list = document.querySelector(".search-drop").getBoundingClientRect();
+        const boxes = [...document.querySelectorAll(".search-drop .tag")].map((el) => el.getBoundingClientRect().toJSON());
+        return boxes.filter((b) => b.bottom < list.bottom - 2).sort((a, b) => b.bottom - a.bottom)[0];
+      });
   const s = { x: t.x + t.width / 2, y: t.y + t.height / 2 };
   await touch("touchStart", s.x, s.y);
   await page.waitForTimeout(350);
@@ -59,21 +66,21 @@ await page.waitForTimeout(100);
 console.log("a tag takes the focus".padEnd(30), "->", JSON.stringify(await state()));
 
 // a tag into the gap after the first chip; the field keeps the focus (the keyboard stays)
-await hold("kind:reply", async (s) => {
+await hold("model:claude", async (s) => {
   const b = await page.locator(".search .chips > .clause").first().boundingBox();
   const to = { x: b.x + b.width + 4, y: b.y + b.height / 2 };
   return Array.from({ length: 10 }, (_, i) => ({ x: s.x + ((to.x - s.x) * (i + 1)) / 10, y: s.y + ((to.y - s.y) * (i + 1)) / 10 }));
 });
 console.log("tag -> gap".padEnd(30), "->", JSON.stringify(await q()), JSON.stringify(await state()));
 
-// a tag low on the screen, where the zones dock: let go in place, nothing happens
+// the lowest tag in sight, right over the zones: let go in place, nothing happens
 await edit();
-await hold("kind:reply", async (s) => [{ x: s.x + 2, y: s.y - 2 }]);
+await hold(undefined, async (s) => [{ x: s.x + 2, y: s.y - 2 }]);
 console.log("let go under the dock".padEnd(30), "->", JSON.stringify(await q()));
 
 // out of the zone and back: then it takes it
 await edit();
-await hold("kind:reply", async (s) => {
+await hold(undefined, async (s) => {
   const only = await page.locator(".drop-zone", { hasText: "Only" }).boundingBox();
   return [
     { x: s.x, y: s.y - 200 },
