@@ -3155,7 +3155,8 @@ footer {
     background: none;
   }
 
-  .tag:hover,
+  /* a tag in the search keeps its frame: a tapped one stays hovered */
+  .tag:not(.active):hover,
   .chip:hover {
     border-color: var(--line);
   }
