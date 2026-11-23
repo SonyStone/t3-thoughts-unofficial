@@ -43,12 +43,24 @@ const en = {
   footer:
     "Unofficial site. Not affiliated with Theo Browne, T3 Tools, t3.gg, T3 Chat or T3 Code. Summaries are written by a model, originals are linked.",
   nav: { feed: "Feed", tags: "Tags", stats: "Stats" },
+  replayIntro: "Play the intro again",
+  language: "Language",
+  xAction: { reply: "Reply", repost: "Repost", like: "Like", views: "Views", bookmark: "Bookmark", share: "Share" },
+  verified: "Verified account",
+  copied: "Copied",
+  credits: {
+    starring: "starring",
+    ceo: "full-time CEO of",
+    and: "and",
+    sponsors: "proudly sponsored by",
+  },
   searchPlaceholder: "Search posts and tags",
   or: "or",
   and: "and",
   impliedTag: "Not on the card itself: it follows from another tag (a model implies its company)",
   clear: "Clear search",
   done: "Done",
+  scrollChips: { left: "Earlier tags", right: "Later tags" },
   searchFor: (words: string) => `Search the text for “${words}”`,
   says: { lead: "Looking for", and: "and", or: "or", without: "without", not: "not", all: "Everything" },
   drop: { add: "Add (and)", negate: "Without", include: "Include", only: "Only this", and: "and", or: "or" },
@@ -67,8 +79,6 @@ const en = {
     kind: "Type",
     mood: "Mood",
     format: "Format",
-    more: "All tags ↓",
-    less: "Fewer tags ↑",
     page: "Tags page →",
     sortBy: "Sort",
     rating: "Rating",
@@ -188,12 +198,24 @@ const ru: Dict = {
   footer:
     "Неофициальный сайт. Не связан с Theo Browne, T3 Tools, t3.gg, T3 Chat и T3 Code. Пересказы написала модель, оригиналы по ссылкам.",
   nav: { feed: "Лента", tags: "Теги", stats: "Статистика" },
+  replayIntro: "Показать вступление снова",
+  language: "Язык",
+  xAction: { reply: "Ответить", repost: "Репост", like: "Нравится", views: "Просмотры", bookmark: "В закладки", share: "Поделиться" },
+  verified: "Подтверждённая учётная запись",
+  copied: "Скопировано",
+  credits: {
+    starring: "в главной роли",
+    ceo: "CEO на полную ставку",
+    and: "и",
+    sponsors: "при поддержке",
+  },
   searchPlaceholder: "Поиск по постам и тегам",
   or: "или",
   and: "и",
   impliedTag: "Этого тега нет на карточке: он следует из другого (модель подразумевает свою компанию)",
   clear: "Очистить поиск",
   done: "Готово",
+  scrollChips: { left: "Предыдущие теги", right: "Следующие теги" },
   searchFor: (words: string) => `Искать в тексте «${words}»`,
   says: { lead: "Ищем", and: "и", or: "или", without: "без", not: "не", all: "Всё" },
   drop: { add: "Добавить (и)", negate: "Без", include: "Включить", only: "Только это", and: "и", or: "или" },
@@ -212,15 +234,13 @@ const ru: Dict = {
     kind: "Тип",
     mood: "Настроение",
     format: "Формат",
-    more: "Все теги ↓",
-    less: "Меньше тегов ↑",
     page: "Страница тегов →",
     sortBy: "Сортировка",
     rating: "Рейтинг",
     day: "День",
     people: "Люди",
     sort: "Порядок тегов",
-    sorts: { popular: "Популярные", recent: "Свежие", name: "А–Я" },
+    sorts: { popular: "Популярные", recent: "Свежие", name: "A–Z" },
   },
   views: { label: "Вид ленты", tiles: "Плитка", list: "Список" },
   xViews: "просмотров",
@@ -264,7 +284,7 @@ const ru: Dict = {
     groups: "Группы тегов",
     filter: "Найти тег",
     order: "Порядок",
-    orders: { count: "Частые", name: "А–Я" },
+    orders: { count: "Частые", name: "A–Z" },
     shown: (count: number) => plural("ru", count, { one: "# тег", few: "# тега", many: "# тегов", other: "# тега" }),
     about: { sponsor: "Спонсоры его видео, по рекламным вставкам", topic: "Всё остальное: темы без пространства имён" },
     help: "Клик по тегу ищет по нему, правый клик (долгое нажатие на телефоне) открывает меню. В поиске пробел — «и», || — «или», минус — «без», * — любой хвост:",
@@ -340,4 +360,12 @@ export function formatDate(date: Date, options: Intl.DateTimeFormatOptions): str
 
 export function formatCount(value: number): string {
   return new Intl.NumberFormat(lang(), { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+/**
+ * A count in a post's action bar, where four of them share a phone tile's width: Russian
+ * "579,6 тыс." takes the K and M of the feeds people read ("579,6K"), so it fits as English does.
+ */
+export function formatTightCount(value: number): string {
+  return formatCount(value).replace(/\s?тыс\.$/, "K").replace(/\s?млн$/, "M").replace(/\s?млрд$/, "B");
 }

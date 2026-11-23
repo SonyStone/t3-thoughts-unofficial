@@ -1,4 +1,5 @@
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, mapArray, onSettled, Show } from "solid-js";
+import { hasCardSelection } from "./cardSelection";
 import { localized, type Entry, type Item } from "./content";
 import { formatDate, lang, t } from "./i18n";
 import { mentions } from "./clauses";
@@ -23,24 +24,35 @@ function estimate(entry: Entry): number {
   return 250 + Math.min(text, 300) * 0.5 + parent + media;
 }
 
-/** Entries laid into as many columns as fit, each into the shortest one, so reading order stays left to right. */
-function useColumns(list: () => Entry[]) {
+/**
+ * Entries laid into as many columns as fit, each into the shortest one, so reading order stays left
+ * to right. Only the column count follows the width, so a resize relays out at a breakpoint, not every pixel.
+ */
+function useColumns<T>(list: () => Entry[], render: (entry: Entry) => T) {
   const [width, setWidth] = createSignal(1200);
   let grid: HTMLDivElement | undefined;
   onSettled(() => {
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    // on the next frame: a relayout inside the callback is a loop to the observer (WebKit says so)
+    const observer = new ResizeObserver(([entry]) => {
+      const next = entry.contentRect.width;
+      requestAnimationFrame(() => setWidth(next));
+    });
     if (grid) observer.observe(grid);
     return () => observer.disconnect();
   });
+  const count = createMemo(() => Math.max(1, Math.floor((width() + GAP) / (COLUMN + GAP))));
+  // one tile per entry for as long as the entry is listed: a new layout moves tiles, never rebuilds them
+  const rendered = createMemo(mapArray(list, render));
   const columns = createMemo(() => {
-    const count = Math.max(1, Math.floor((width() + GAP) / (COLUMN + GAP)));
-    const result: Entry[][] = Array.from({ length: count }, () => []);
-    const heights = new Array(count).fill(0);
-    for (const entry of list()) {
+    const entries = list();
+    const tiles = rendered();
+    const result: T[][] = Array.from({ length: count() }, () => []);
+    const heights: number[] = new Array(count()).fill(0);
+    entries.forEach((entry, i) => {
       const shortest = heights.indexOf(Math.min(...heights));
-      result[shortest].push(entry);
+      result[shortest].push(tiles[i]);
       heights[shortest] += estimate(entry);
-    }
+    });
     return result;
   });
   return { columns, ref: (el: HTMLDivElement) => (grid = el) };
@@ -138,10 +150,18 @@ function summary(item: Item): string {
 }
 
 function open(entry: Entry) {
+  const activate = (event: MouseEvent) => {
+    if ((event.target as Element).closest("a, button") || hasCardSelection(event.currentTarget as Element)) return;
+    if (event.button === 1 || event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      window.open(postHref(entry.latest.id), "_blank", "noopener");
+    } else if (event.button === 0) openEntry(entry.latest.id);
+  };
   return {
-    tabindex: "0",
-    onClick: () => openEntry(entry.latest.id),
-    onKeyDown: (event: KeyboardEvent) => event.key === "Enter" && openEntry(entry.latest.id),
+    // the posts it opens on, for Back from one to put the focus here again (scroll.ts)
+    "data-posts": entry.items.map((item) => item.id).join(" "),
+    onClick: activate,
+    onAuxClick: (event: MouseEvent) => event.button === 1 && activate(event),
   };
 }
 
@@ -172,16 +192,13 @@ function Tile(props: { entry: Entry }) {
 }
 
 export function Tiles(props: { entries: Entry[] }) {
-  const { columns, ref } = useColumns(() => props.entries);
+  const { columns, ref } = useColumns(
+    () => props.entries,
+    (entry) => <Tile entry={entry} />,
+  );
   return (
     <div class="tiles" ref={ref}>
-      <For each={columns()}>
-        {(column) => (
-          <div class="tile-column">
-            <For each={column}>{(entry) => <Tile entry={entry} />}</For>
-          </div>
-        )}
-      </For>
+      <For each={columns().map((_, index) => index)}>{(index) => <div class="tile-column">{columns()[index]}</div>}</For>
     </div>
   );
 }

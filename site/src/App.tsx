@@ -1,33 +1,25 @@
-import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js";
+import { insert } from "@solidjs/web";
 import { entries, entryMetric, localized, type Entry, type Item } from "./content";
 import { lang, LANGS, setLang, t, type Lang } from "./i18n";
 import { Icon } from "./icons";
 import { setView, view, VIEWS } from "./prefs";
+import { radioKeys, radioTab } from "./radios";
 import Ribbon from "./Ribbon";
-import { feedHref, route } from "./route";
+import { scrollBehavior } from "./motion";
+import { feedHref, route, setQuery, withQuery } from "./route";
+import { toTheVideo } from "./scroll";
 import { search, sortOf } from "./search";
-import SearchBox from "./SearchBox";
+import SearchBox, { moveSearch } from "./SearchBox";
 import StatsPage from "./StatsPage";
 import { sortTags, Tag } from "./Tag";
-import TagCloud from "./TagCloud";
 import TagMenu from "./TagMenu";
 import TagsPage from "./TagsPage";
 import { EntryMeta, List, Tiles } from "./Tiles";
 import { Chapters, VideoCard } from "./Video";
 import { XThread } from "./XPost";
 import Counts from "./Counts";
-import loopWebm from "../../assets/header/loop-grok-1280.webm?url";
-import loopMp4 from "../../assets/header/loop-grok-1280.mp4?url";
-import loopWebmMobile from "../../assets/header/loop-grok-960.webm?url";
-import loopMp4Mobile from "../../assets/header/loop-grok-960.mp4?url";
-import posterWebp from "../../assets/header/poster-1280.webp?url";
-import posterJpg from "../../assets/header/poster-1280.jpg?url";
-import posterWebpMobile from "../../assets/header/poster-960.webp?url";
-import posterJpgMobile from "../../assets/header/poster-960.jpg?url";
-
-/** Same breakpoint as the phone header in styles.css. */
-const MOBILE = "(max-width: 700px)";
-
+import Hero from "./Hero";
 const LANG_NAMES: Record<Lang, string> = { en: "English", ru: "Русский" };
 
 function Analysis(props: { item: Item }) {
@@ -145,12 +137,13 @@ function PostPage() {
 
 function ViewSwitch() {
   return (
-    <div class="segmented" role="radiogroup" aria-label={t().views.label}>
+    <div class="segmented" role="radiogroup" aria-label={t().views.label} onKeyDown={radioKeys}>
       <For each={VIEWS}>
         {(mode) => (
           <button
             role="radio"
             aria-checked={view() === mode ? "true" : "false"}
+            tabindex={radioTab(view() === mode)}
             class={{ current: view() === mode }}
             title={t().views[mode]}
             onClick={() => setView(mode)}
@@ -177,32 +170,37 @@ function Feed() {
   });
 
   return (
-    <>
+    <div class="feed">
       <div class="results">
-        <p class="results-count">{q() ? t().found(visible().length) : t().total(visible().length)}</p>
+        <p class="results-count" role="status">{!visible().length ? t().nothing : q() ? t().found(visible().length) : t().total(visible().length)}</p>
         <ViewSwitch />
       </div>
-      <Show when={visible().length > 0} fallback={<p class="muted nothing">{t().nothing}</p>}>
+      <Show when={visible().length > 0} fallback={<button class="nothing" onClick={() => setQuery("")}>{t().clear}</button>}>
         <Show when={view() === "list"} fallback={<Tiles entries={visible()} />}>
           <List entries={visible()} />
         </Show>
       </Show>
-    </>
+    </div>
   );
 }
 
 /** EN ▾ that opens a short list of languages. */
 function LangMenu() {
   const [open, setOpen] = createSignal(false);
+  // the list opens from the button's left edge, or from its right one when it would not fit that way
+  // (the button at the right of a narrow header)
+  const [fromRight, setFromRight] = createSignal(false);
   let box: HTMLDivElement | undefined;
   let button: HTMLButtonElement | undefined;
   // arrows move between languages, Escape closes and gives focus back to the button
   const onListKey = (event: KeyboardEvent) => {
+    if (!open()) return;
     const options = [...(box?.querySelectorAll<HTMLButtonElement>(".lang-list button") ?? [])];
     const index = options.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      options[(index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length]?.focus();
+      const next = event.key === "ArrowDown" ? index + 1 : Math.max(index, 0) - 1;
+      options.at(next % options.length)?.focus();
     } else if (event.key === "Escape") {
       setOpen(false);
       button?.focus();
@@ -212,26 +210,45 @@ function LangMenu() {
     const close = (event: Event) => !box?.contains(event.target as Node) && setOpen(false);
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(false);
     window.addEventListener("click", close);
+    // a press elsewhere closes it first (a card or a tag keeps its click to itself), and so does
+    // a new page
+    const shut = () => setOpen(false);
+    window.addEventListener("pointerdown", close, true);
+    window.addEventListener("hashchange", shut);
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("click", close);
+      window.removeEventListener("pointerdown", close, true);
+      window.removeEventListener("hashchange", shut);
       window.removeEventListener("keydown", onKey);
     };
   });
   return (
-    <div class="lang" ref={(el) => (box = el)}>
-      <button class="lang-button" ref={(el) => (button = el)} aria-haspopup="listbox" aria-expanded={open() ? "true" : "false"} onClick={() => setOpen(!open())}>
+    <div
+      class="lang"
+      onKeyDown={onListKey}
+      ref={(el) => (box = el)}
+      // Tab out of the list closes it, as a click elsewhere does
+      onFocusOut={(event) => !box?.contains(event.relatedTarget as Node | null) && event.relatedTarget && setOpen(false)}
+    >
+      <button class="lang-button" aria-label={`${t().language}: ${LANG_NAMES[lang()]}`} ref={(el) => (button = el)} aria-haspopup="menu" aria-expanded={open() ? "true" : "false"} onClick={() => {
+        const edge = button?.getBoundingClientRect();
+        setFromRight(!!edge && edge.left + 180 > document.documentElement.clientWidth - 8);
+        setOpen(!open());
+      }}>
         {lang().toUpperCase()}
         <Icon name="chevron" />
       </button>
       <Show when={open()}>
-        <ul class="lang-list" role="listbox" onKeyDown={onListKey}>
+        <ul class={{ "lang-list": true, "from-right": fromRight() }} role="menu" aria-label={t().language}>
           <For each={LANGS}>
             {(code) => (
-              <li role="option" aria-selected={lang() === code ? "true" : "false"}>
+              <li role="none">
                 <button
+                  role="menuitemradio"
+                  aria-checked={lang() === code ? "true" : "false"}
                   class={{ current: lang() === code }}
-                  ref={(el) => lang() === code && queueMicrotask(() => el.focus())}
+                  ref={(el) => queueMicrotask(() => lang() === code && el.focus())}
                   onClick={() => {
                     setLang(code);
                     setOpen(false);
@@ -253,102 +270,164 @@ function LangMenu() {
   );
 }
 
-function TopNav() {
-  const feed = () => route().page === "feed";
+/** The site's name, the way up to the video: on the feed it scrolls there, elsewhere it opens the feed there. */
+function Brand() {
+  const up = () => (route().page === "feed" ? window.scrollTo({ top: 0, behavior: scrollBehavior() }) : toTheVideo());
   return (
-    <header class={{ topnav: true, solid: !feed() }}>
+    <a class="brand" href={feedHref(route().q)} onClick={up}>
+      T3 Thoughts
+    </a>
+  );
+}
+
+function NavLinks() {
+  return (
+    <nav class="nav-links">
+      <a href={feedHref(route().q)} class={{ current: route().page === "feed" || route().page === "post" }}>
+        {t().nav.feed}
+      </a>
+      <a href={withQuery("/tags", route().q)} class={{ current: route().page === "tags" }}>
+        {t().nav.tags}
+      </a>
+      <a href={withQuery("/stats", route().q)} class={{ current: route().page === "stats" }}>
+        {t().nav.stats}
+      </a>
+    </nav>
+  );
+}
+
+function TopNav(props: { slot: (el: HTMLElement) => void }) {
+  const feed = () => route().page === "feed";
+  let header: HTMLElement | undefined;
+  // the header's real height for what sits under it (Tags: the index, the headings it scrolls to):
+  // narrow, and longer in Russian, it takes two rows
+  onSettled(() => {
+    if (!header) return;
+    const el = header;
+    const observer = new ResizeObserver(() =>
+      requestAnimationFrame(() => {
+        // only a header that stays at the top (a phone's scrolls away with the page)
+        const stays = el.classList.contains("solid") && ["sticky", "fixed"].includes(getComputedStyle(el).position);
+        if (stays) {
+          const height = `${el.getBoundingClientRect().height}px`;
+          document.documentElement.style.setProperty("--head-height", height);
+          // Reading mode needs this measurement before the feed's own header sticks.
+          document.documentElement.style.setProperty("--stuck-height", height);
+        } else document.documentElement.style.removeProperty("--head-height");
+      }),
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+  return (
+    <header class={{ topnav: true, solid: !feed() }} ref={(el) => (header = el)}>
       <Show when={!feed()}>
-        <a class="brand" href={feedHref(route().q)}>
-          T3 Thoughts
-        </a>
+        <Brand />
       </Show>
-      <nav class="nav-links">
-        <a href={feedHref(route().q)} class={{ current: feed() || route().page === "post" }}>
-          {t().nav.feed}
-        </a>
-        <a href="#/tags" class={{ current: route().page === "tags" }}>
-          {t().nav.tags}
-        </a>
-        <a href="#/stats" class={{ current: route().page === "stats" }}>
-          {t().nav.stats}
-        </a>
-      </nav>
+      <NavLinks />
       <LangMenu />
-      {/* without the video there is nothing for the search to sit on, so it joins the header */}
-      <Show when={!feed()}>
-        <div class="head-search">
-          <SearchBox stuck />
-        </div>
-      </Show>
+      {/* without the video there is nothing for the search to sit on, so it joins the header;
+          the place stays when the feed is open, empty and hidden, for the search to move in and out */}
+      <div class="head-search" ref={props.slot} style={{ display: feed() ? "none" : undefined }} />
     </header>
   );
 }
 
 /**
- * The video in a frame of fixed proportions: the title is placed and sized in the frame's
- * own units, so it keeps its place beside Theo at any window width.
+ * One search box for every page, moved to where the page has it (the header, the feed's bar): a
+ * tag picked on Tags opens the feed, and the search goes on there as it was, with the text, the
+ * focus and a phone's editing screen, instead of a new box starting from nothing. Both places stay
+ * on the page (hidden when not in use), so the box is never taken out with one: only moved, here.
  */
-function Hero() {
-  return (
-    <div class="hero">
-      <div class="hero-frame">
-        {/* First frame of the loop, shown until the video has a frame of its own. */}
-        <picture>
-          <source media={MOBILE} srcset={posterWebpMobile} type="image/webp" />
-          <source media={MOBILE} srcset={posterJpgMobile} />
-          <source srcset={posterWebp} type="image/webp" />
-          <img class="hero-media" src={posterJpg} alt="" fetchpriority="high" />
-        </picture>
-        <video class="hero-media" autoplay muted loop playsinline>
-          <source media={MOBILE} src={loopWebmMobile} type="video/webm" />
-          <source media={MOBILE} src={loopMp4Mobile} type="video/mp4" />
-          <source src={loopWebm} type="video/webm" />
-          <source src={loopMp4} type="video/mp4" />
-        </video>
-        <div class="hero-text">
-          <h1>T3 Thoughts</h1>
-          <p>{t().tagline}</p>
-        </div>
-      </div>
-    </div>
-  );
+function oneSearch() {
+  // a box of its own to move: JSX gives back what renders an element, not the element itself
+  const search = document.createElement("div");
+  search.className = "search-host";
+  search.style.display = "contents";
+  insert(search, () => <SearchBox />);
+  return (slot: HTMLElement | undefined) => {
+    if (!slot || search.parentElement === slot) return;
+    const focused = search.contains(document.activeElement) ? (document.activeElement as HTMLElement) : undefined;
+    // the move takes the focus away for a moment: not a blur to answer (the text stays, the screen too)
+    moveSearch(() => {
+      slot.append(search);
+      focused?.focus({ preventScroll: true });
+    });
+  };
 }
 
 export default function App() {
+  const place = oneSearch();
+  let head: HTMLElement | undefined;
+  let barSlot: HTMLElement | undefined;
+  createEffect(
+    () => route().page === "feed",
+    (feed) => place(feed ? barSlot : head),
+  );
   let bar: HTMLDivElement | undefined;
   const [stuck, setStuck] = createSignal(false);
   // the search is part of the page until it sticks to the top; then it gets a solid bar
   onSettled(() => {
+    // until when a bar short of the top is looked at again, frame by frame
+    let until = 0;
     const check = () => {
-      setStuck(!!bar && window.scrollY > 0 && bar.getBoundingClientRect().top <= 0);
+      // hidden (another page open), it is not on the page to stick
+      const top = bar && bar.offsetHeight > 0 ? bar.getBoundingClientRect().top : Infinity;
+      const on = window.scrollY > 0 && top <= 0;
+      setStuck(on);
+      // one jump of the scroll (Back to a place in the feed) gives one scroll event, and the bar
+      // slides the last bit up to the top after it (the header above it eases): it is watched
+      // until it gets there, for a moment
+      // (and the feed coming back to a place deep in it: the bar is still hidden for a frame)
+      if (!on && window.scrollY > 0 && (top < 60 || top === Infinity) && performance.now() < until) requestAnimationFrame(check);
     };
+    const scrolled = () => {
+      until = performance.now() + 600;
+      check();
+    };
+    const observer = new ResizeObserver(([entry]) => {
+      if (bar?.classList.contains("stuck") && entry.borderBoxSize[0].blockSize > 0) {
+        document.documentElement.style.setProperty("--stuck-height", `${entry.borderBoxSize[0].blockSize}px`);
+      }
+    });
+    if (bar) observer.observe(bar);
     check();
-    window.addEventListener("scroll", check, { passive: true });
-    window.addEventListener("resize", check);
+    window.addEventListener("scroll", scrolled, { passive: true });
+    window.addEventListener("resize", scrolled);
+    // another page: the feed may open already scrolled, with no scroll event to tell
+    window.addEventListener("hashchange", scrolled);
     return () => {
-      window.removeEventListener("scroll", check);
-      window.removeEventListener("resize", check);
+      observer.disconnect();
+      window.removeEventListener("hashchange", scrolled);
+      window.removeEventListener("scroll", scrolled);
+      window.removeEventListener("resize", scrolled);
     };
   });
 
   return (
     <>
       <Ribbon />
-      <TopNav />
+      <TopNav slot={(el) => (head = el)} />
       <Show when={route().page === "feed"}>
         <Hero />
       </Show>
 
-      <main class={{ "on-hero": route().page === "feed" }}>
-        <Show when={route().page === "feed"}>
-          <div class={{ bar: true, stuck: stuck() }} ref={(el) => (bar = el)}>
-            <SearchBox stuck={stuck()} />
-          </div>
-          <div class="hero-cloud">
-            <TagCloud short />
-          </div>
-        </Show>
+      {/* stuck to the top, it is the same header as on the other pages, so the search keeps its place;
+          on the page only with the feed, but kept there hidden, as the search's place (see oneSearch) */}
+      <div class="bar-slot" style={{ display: route().page === "feed" ? undefined : "none" }}>
+        <div class={{ bar: true, stuck: stuck() }} ref={(el) => (bar = el)}>
+          <Show when={stuck()}>
+            <Brand />
+            <NavLinks />
+            <LangMenu />
+          </Show>
+          <div class={{ "bar-search": true, "head-search": stuck() }} ref={(el) => (barSlot = el)} />
+        </div>
+      </div>
 
+      <main>
+        {/* no tags under the search: the posts come right after it, and the tags open with the
+            search (its dropdown, a phone's editing screen) */}
         <Switch>
           <Match when={route().page === "tags"}>
             <TagsPage />

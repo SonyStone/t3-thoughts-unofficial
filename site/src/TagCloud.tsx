@@ -1,8 +1,10 @@
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { route, withQuery } from "./route";
+import { createMemo, For } from "solid-js";
 import { entries, type Kind } from "./content";
 import { t } from "./i18n";
 import { CLOUD_SORTS, cloudSort, setCloudSort, type CloudSort } from "./prefs";
-import { tagCounts, tagLastSeen } from "./search";
+import { radioKeys, radioTab } from "./radios";
+import { search, tagCounts, tagLastSeen } from "./search";
 import { namespaceKey, Tag } from "./Tag";
 
 const TOPICAL = new Set(["product", "model", "company", "tech", "sponsor", "topic"]);
@@ -25,12 +27,13 @@ function ordered(list: [string, number][], sort: CloudSort, limit: number): [str
 
 export function CloudSortSwitch() {
   return (
-    <div class="segmented small-seg" role="radiogroup" aria-label={t().cloud.sort}>
+    <div class="segmented small-seg" role="radiogroup" aria-label={t().cloud.sort} onKeyDown={radioKeys}>
       <For each={CLOUD_SORTS}>
         {(sort) => (
           <button
             role="radio"
             aria-checked={cloudSort() === sort ? "true" : "false"}
+            tabindex={radioTab(cloudSort() === sort)}
             class={{ current: cloudSort() === sort }}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setCloudSort(sort)}
@@ -53,49 +56,32 @@ const byWeight = (min: number) => entries.filter((entry) => entry.items.some((it
 const quick: { key: "sortBy" | "rating" | "day"; tags: [string, number | undefined][] }[] = [
   { key: "sortBy", tags: [["sort:likes", undefined], ["sort:views", undefined]] },
   { key: "rating", tags: [["weight:3", byWeight(3)], ["weight:>=1", byWeight(1)]] },
-  { key: "day", tags: days.slice(0, 5).map((day) => [`date:${day}`, entries.filter((entry) => entry.day === day).length]) },
+  { key: "day", tags: days.slice(0, 5).map((day) => [`date:${day}`, search(`date:${day}`).length]) },
 ];
 
-const [expanded, setExpanded] = createSignal(false);
-
 /**
- * Tags to start a search from. Under the search box it is short (topics, type and the quick
- * terms) until "All tags" opens it in place with every tag; in the dropdown of the stuck
- * search it is always full.
+ * Tags to start a search from, all of them, in the search's dropdown (on a phone, its editing
+ * screen): there is no cloud on the page itself, the posts come right after the search.
  */
-export default function TagCloud(props: { short?: boolean }) {
-  const full = () => !props.short || expanded();
+export default function TagCloud() {
   const groups = createMemo(() =>
     [
-      { key: "popular", tags: ordered(topical, cloudSort(), full() ? topical.length : 14) as [string, number | undefined][] },
+      { key: "popular", tags: ordered(topical, cloudSort(), topical.length) as [string, number | undefined][] },
       { key: "kind", tags: kindCounts as [string, number | undefined][] },
       // a quick term that finds nothing (no key posts yet) is left out
       ...quick.map((group) => ({ ...group, tags: group.tags.filter(([, count]) => count !== 0) })),
-      ...(full()
-        ? [
-            { key: "mood", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "mood"), cloudSort(), 20) },
-            { key: "format", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "format"), cloudSort(), 20) },
-            { key: "people", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "person"), cloudSort(), 60) },
-          ]
-        : []),
+      { key: "mood", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "mood"), cloudSort(), 20) },
+      { key: "format", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "format"), cloudSort(), 20) },
+      { key: "people", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "person"), cloudSort(), 60) },
     ].filter((group) => group.tags.length > 0),
   );
   return (
-    <div class={{ cloud: true, short: !!props.short, expanded: full() }}>
+    <div class="cloud">
       <div class="cloud-bar">
         <CloudSortSwitch />
-        <Show
-          when={props.short}
-          fallback={
-            <a class="cloud-more" href="#/tags">
-              {t().cloud.page}
-            </a>
-          }
-        >
-          <button class="cloud-more" aria-expanded={expanded() ? "true" : "false"} onClick={() => setExpanded(!expanded())}>
-            {expanded() ? t().cloud.less : t().cloud.more}
-          </button>
-        </Show>
+        <a class="cloud-more" href={withQuery("/tags", route().q)}>
+          {t().cloud.page}
+        </a>
       </div>
       <For each={groups()}>
         {(group) => (

@@ -105,9 +105,19 @@ function withoutRivals(clauses: Clause[], tag: string): Clause[] {
   return clauses.filter((c) => "raw" in c || c.terms.length > 1 || c.terms[0].neg || prefix(c.terms[0].raw) !== ns);
 }
 
+/** A term without the tag: gone if it is the tag, an "and" group without that part of it. */
+function dropTerm(t: Term, tag: string): Term | undefined {
+  if (same(t.raw, tag)) return undefined;
+  if (!t.all) return t;
+  const all = t.all.filter((part) => !same(part.raw, tag));
+  if (all.length === t.all.length) return t;
+  if (all.length === 0) return undefined;
+  return all.length === 1 ? all[0] : { raw: group(all), neg: t.neg, all };
+}
+
 function without(clauses: Clause[], tag: string): Clause[] {
   return clauses
-    .map((c) => ("raw" in c ? c : { terms: c.terms.filter((t) => !same(t.raw, tag)) }))
+    .map((c) => ("raw" in c ? c : { terms: c.terms.flatMap((t) => dropTerm(t, tag) ?? []) }))
     .filter((c) => "raw" in c || c.terms.length > 0);
 }
 

@@ -1,4 +1,4 @@
-import { createSignal, flush } from "solid-js";
+import { createSignal, flush, onCleanup } from "solid-js";
 
 /**
  * Dragging tags and chips toward the search box, on pointer events rather than the
@@ -38,13 +38,17 @@ export type Layout = { snapshot: () => (keep?: Element) => void; settled: () => 
 let handler: DropHandler | undefined;
 let outsideTest: ((x: number, y: number) => boolean) | undefined;
 let layout: Layout | undefined;
+let cancelGesture: (() => void) | undefined;
 
 export function onDrop(drop: DropHandler, isOutside: (x: number, y: number) => boolean, box?: Layout) {
   handler = drop;
   outsideTest = isOutside;
   layout = box;
   return () => {
-    if (handler === drop) handler = outsideTest = layout = undefined;
+    if (handler === drop) {
+      handler = outsideTest = layout = undefined;
+      cancelGesture?.();
+    }
   };
 }
 
@@ -74,6 +78,25 @@ function getProxy(): HTMLDivElement {
 function keyAt(x: number, y: number): string | undefined {
   const place = (document.elementFromPoint(x, y)?.closest("[data-drop]") as HTMLElement | null)?.dataset.drop;
   return place ?? (outsideTest?.(x, y) ? "outside" : undefined);
+}
+
+/**
+ * Held near the top or bottom of the window while the drop places are off it there (the search
+ * at the top of a long page of tags, scrolled away), the page scrolls until they are all in
+ * sight, faster the closer to the edge. With them in sight it stays: the pointer is there to drop.
+ */
+const EDGE = 64;
+function edgeStep(y: number): number {
+  const places = [...document.querySelectorAll("[data-drop]")].map((el) => el.getBoundingClientRect()).filter((box) => box.width > 0);
+  if (!places.length) return 0;
+  const top = Math.min(...places.map((box) => box.top));
+  const bottom = Math.max(...places.map((box) => box.bottom));
+  const up = top < 0 && y < EDGE;
+  if (!up && !(bottom > window.innerHeight && y > window.innerHeight - EDGE)) return 0;
+  const into = up ? EDGE - y : y - (window.innerHeight - EDGE);
+  if (into <= 0) return 0;
+  const step = Math.ceil(Math.min(1, into / EDGE) * 20);
+  return up ? -step : step;
 }
 
 /** Where the copy hangs from the pointer: the point it was grabbed by, in its own box. */
@@ -161,10 +184,11 @@ function vanish(ghost: HTMLElement) {
 
 // the click that ends a drag is not a click
 let swallowClick = false;
+window.addEventListener("pointerdown", () => { swallowClick = false; }, true);
 window.addEventListener(
   "click",
   (event) => {
-    if (!swallowClick) return;
+    if (!swallowClick || !event.detail) return;
     swallowClick = false;
     event.preventDefault();
     event.stopPropagation();
@@ -183,11 +207,13 @@ export function draggable(
   what: () => Dragged,
   options: { touch?: true | "hold"; onHeld?: (source: HTMLElement, x: number, y: number) => void; copy?: string } = {},
 ) {
+  let cancelHold: (() => void) | undefined;
+  onCleanup(() => cancelHold?.());
   return {
     draggable: "false" as const,
     onDragStart: (event: DragEvent) => event.preventDefault(),
     onPointerDown: (event: PointerEvent) => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || cancelGesture) return;
       const source = event.currentTarget as HTMLElement;
       const start = { x: event.clientX, y: event.clientY };
       const pointer = event.pointerId;
@@ -198,6 +224,8 @@ export function draggable(
       let tilt = 0;
       let last = { x: start.x, t: event.timeStamp };
       let leaning = 0;
+      let scrolling = 0;
+      let at = { x: start.x, y: start.y };
       let target: HTMLElement = source;
       // a finger on a "hold" element is armed once it has rested there
       let armed = event.pointerType === "mouse" || options.touch !== "hold";
@@ -222,6 +250,8 @@ export function draggable(
       };
 
       const begin = () => {
+        cancelHold = undefined; // An active drag may outlive its source.
+        source.removeEventListener("lostpointercapture", lost);
         const held = source.hasAttribute("data-held");
         source.removeAttribute("data-held");
         const shape = (options.copy && source.querySelector<HTMLElement>(options.copy)) || source;
@@ -241,6 +271,7 @@ export function draggable(
         ghost.getBoundingClientRect();
         ghost.classList.add("lifted");
         if (!still.matches) leaning = requestAnimationFrame(lean);
+        scrolling = requestAnimationFrame(edge);
         // from here the proxy holds the pointer, so the source can leave the page
         const next = getProxy();
         try {
@@ -259,6 +290,14 @@ export function draggable(
         source.setAttribute("data-drag-source", "");
       };
 
+      const edge = () => {
+        scrolling = requestAnimationFrame(edge);
+        const step = edgeStep(at.y);
+        if (!step) return;
+        window.scrollBy({ top: step, behavior: "instant" });
+        setOver(keyAt(at.x, at.y));
+      };
+
       const move = (e: PointerEvent) => {
         if (e.pointerId !== pointer) return;
         const moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
@@ -267,6 +306,7 @@ export function draggable(
         if (!dragged() && moved < THRESHOLD) return;
         if (!dragged()) begin();
         e.preventDefault();
+        at = { x: e.clientX, y: e.clientY };
         const dt = Math.max(e.timeStamp - last.t, 1);
         speed = speed * 0.7 + ((e.clientX - last.x) / dt) * 0.3;
         last = { x: e.clientX, t: e.timeStamp };
@@ -274,7 +314,8 @@ export function draggable(
         setOver(keyAt(e.clientX, e.clientY));
       };
 
-      const finish = (e: Event, drop: boolean) => {
+      const finish = (e: Event | undefined, drop: boolean) => {
+        cancelHold = cancelGesture = undefined;
         window.clearTimeout(timer);
         source.removeAttribute("data-held");
         window.removeEventListener("touchmove", noScroll, true);
@@ -284,6 +325,7 @@ export function draggable(
         window.removeEventListener("pointercancel", cancel, true);
         window.removeEventListener("keydown", escape, true);
         window.removeEventListener("blur", lost);
+        document.removeEventListener("visibilitychange", visibility);
         target.removeEventListener("lostpointercapture", lost);
         try {
           target.releasePointerCapture(pointer);
@@ -291,6 +333,7 @@ export function draggable(
           // already released
         }
         cancelAnimationFrame(leaning);
+        cancelAnimationFrame(scrolling);
         const what = dragged();
         source.removeAttribute("data-drag-source");
         // where the box's pieces stand mid-drag, to slide them back from or on to the drop
@@ -309,13 +352,22 @@ export function draggable(
         if (held) options.onHeld?.(source, start.x, start.y);
         if (!what && !held) return;
         swallowClick = true;
-        setTimeout(() => (swallowClick = false), 0);
       };
       const up = (e: PointerEvent) => e.pointerId === pointer && finish(e, true);
       const cancel = (e: PointerEvent) => e.pointerId === pointer && finish(e, false);
-      const escape = (e: KeyboardEvent) => e.key === "Escape" && dragged() && finish(e, false);
+      // Escape cancels the drag and nothing else: not the search being worked in under it
+      const escape = (e: KeyboardEvent) => {
+        if (e.key !== "Escape" || !dragged()) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finish(e, false);
+      };
       // the window lost focus or the pointer (a screenshot tool, an alert): the drag ends, nothing drops
-      const lost = (e: Event) => dragged() && finish(e, false);
+      const lost = () => finish(undefined, false);
+      const visibility = () => { if (document.hidden) lost(); };
+      cancelHold = cancelGesture = lost;
+      source.addEventListener("lostpointercapture", lost);
+      document.addEventListener("visibilitychange", visibility);
 
       // once armed, a moving finger drags instead of scrolling: the page has not started to
       // scroll while it rested, and a cancelled touchmove keeps it from starting

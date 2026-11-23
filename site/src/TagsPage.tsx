@@ -1,7 +1,9 @@
+import { scrollBehavior } from "./motion";
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { vocabulary } from "virtual:content";
 import { tagCounts } from "./search";
 import { t } from "./i18n";
+import { radioKeys, radioTab } from "./radios";
 import { describe, NAMESPACES, namespaceKey, Tag } from "./Tag";
 
 type Order = "count" | "name";
@@ -11,17 +13,20 @@ const bareName = (tag: string) => tag.slice(tag.indexOf(":") + 1);
 /** A description that only repeats the name ("Apple" for company:apple) says nothing. */
 function about(tag: string): string | undefined {
   const text = describe(vocabulary.tags[tag]);
-  return text && text.toLowerCase().replace(/[^a-z0-9]/g, "") !== bareName(tag).replace(/[^a-z0-9]/g, "") ? text : undefined;
+  // letters of any script: "модели Claude вообще" is more than "claude"
+  const bare = (words: string) => words.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  return text && bare(text) !== bare(bareName(tag)) ? text : undefined;
 }
 
 /**
  * All tags by namespace: an index of namespaces on the side, a filter and an order on top,
  * and per tag its description and how often it is used.
  */
-export default function TagsPage() {
-  const [filter, setFilter] = createSignal("");
-  const [order, setOrder] = createSignal<Order>("count");
+// kept across visits: a tag clicked here opens the feed, and Back finds the page as it was left
+const [filter, setFilter] = createSignal("");
+const [order, setOrder] = createSignal<Order>("count");
 
+export default function TagsPage() {
   const groups = createMemo(() => {
     const needle = filter().trim().toLowerCase();
     return NAMESPACES.map((ns) => {
@@ -50,7 +55,7 @@ export default function TagsPage() {
             {(group) => (
               <a href={`#/tags`} data-ns={group.ns} onClick={(event) => {
                 event.preventDefault();
-                document.getElementById(`ns-${group.ns}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                document.getElementById(`ns-${group.ns}`)?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
               }}>
                 <span class="ns-mark" />
                 {t().namespaces[group.ns]}
@@ -67,12 +72,19 @@ export default function TagsPage() {
               type="search"
               placeholder={t().tagsPage.filter}
               value={filter()}
+              // tags are lower case, and a phone's keyboard should not capitalize or "fix" them
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck={false}
+              enterkeyhint="search"
               onInput={(event) => setFilter(event.currentTarget.value)}
+              // Enter puts the keyboard away, so the tags it left are in sight
+              onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
             />
-            <div class="segmented" role="radiogroup" aria-label={t().tagsPage.order}>
+            <div class="segmented" role="radiogroup" aria-label={t().tagsPage.order} onKeyDown={radioKeys}>
               <For each={["count", "name"] as Order[]}>
                 {(mode) => (
-                  <button role="radio" aria-checked={order() === mode ? "true" : "false"} class={{ current: order() === mode }} onClick={() => setOrder(mode)}>
+                  <button role="radio" aria-checked={order() === mode ? "true" : "false"} tabindex={radioTab(order() === mode)} class={{ current: order() === mode }} onClick={() => setOrder(mode)}>
                     {t().tagsPage.orders[mode]}
                   </button>
                 )}

@@ -1,10 +1,20 @@
 // Screenshots of the main views for design review: node scripts/shots.mjs <out-dir> [base-url]
 // Desktop 1440 and phone 390, up to three screens each, with the header video paused on one frame.
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
+// the tag cloud is in the search's dropdown, which a focused field opens (the page has none)
+const cloudTag = async (p, text) => {
+  if (!(await p.locator(".search-drop .cloud").count())) {
+    await p.locator(".search-field input").focus();
+    await p.waitForTimeout(250);
+  }
+  return text === undefined ? p.locator(".search-drop .tag") : p.locator(".search-drop .tag", { hasText: text }).first();
+};
 import { mkdirSync } from "node:fs";
 
 const out = process.argv[2] ?? "shots";
-const base = process.argv[3] ?? "http://localhost:5173/";
+const base = process.argv[3] ?? SITE + "/";
 mkdirSync(out, { recursive: true });
 
 // [name, hash, what to do once the page is there]
@@ -15,7 +25,7 @@ const views = [
     await page.getByRole("radio", { name: /List|Список/ }).click();
   }],
   ["tag-menu", "#/?q=product:t3-code", async (page) => {
-    const tag = page.locator(".hero-cloud .tag").nth(3);
+    const tag = (await cloudTag(page)).nth(3);
     await tag.scrollIntoViewIfNeeded();
     await tag.click({ button: "right" });
     await page.locator('[role="menu"]').waitFor();

@@ -1,5 +1,15 @@
 // Frames of the drag motion (lift, tabs, landing, going home, fading out) and the end states: node scripts/check-motion.mjs [out dir] (dev server on :5173)
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
+// the tag cloud is in the search's dropdown, which a focused field opens (the page has none)
+const cloudTag = async (p, text) => {
+  if (!(await p.locator(".search-drop .cloud").count())) {
+    await p.locator(".search-field input").focus();
+    await p.waitForTimeout(250);
+  }
+  return text === undefined ? p.locator(".search-drop .tag") : p.locator(".search-drop .tag", { hasText: text }).first();
+};
 import { mkdirSync } from "node:fs";
 const out = process.argv[2] ?? "/tmp/motion";
 mkdirSync(out, { recursive: true });
@@ -20,7 +30,7 @@ const shot = (name) => page.screenshot({ path: `${out}/${name}.png`, clip });
 
 async function open() {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(base));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent(base));
   await page.waitForTimeout(400);
   const box = await page.locator(".search").boundingBox();
   clip = { x: box.x - 10, y: box.y - 70, width: box.width + 20, height: box.height + 140 };
@@ -70,7 +80,7 @@ await run("neg-include", chip("business"), () => center(page.locator(".drop-zone
 {
   const q3 = "company:anthropic -harness -competition";
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(q3));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent(q3));
   await page.waitForTimeout(400);
   const box = await page.locator(".search").boundingBox();
   clip = { x: box.x - 10, y: box.y - 70, width: box.width + 20, height: box.height + 140 };
@@ -80,7 +90,7 @@ await run("neg-include", chip("business"), () => center(page.locator(".drop-zone
     const row = [...el.parentElement.children].filter((c) => getComputedStyle(c).display !== "none").sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
     return row.map((c) => (c === el ? `[${c.textContent}]` : c.textContent.replace(/\s+/g, " ").trim())).join(" ");
   });
-  const t = await center(page.locator(".hero-cloud .tag", { hasText: "model:claude" }).first());
+  const t = await center(await cloudTag(page, "model:claude"));
   await page.mouse.move(t.x, t.y);
   await page.mouse.down();
   await page.mouse.move(t.x + 10, t.y - 10, { steps: 3 });

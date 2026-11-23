@@ -105,6 +105,11 @@ a {
 
 .topnav.solid {
   position: sticky;
+}
+
+/* the header of the other pages, and the feed's search once it sticks: one and the same */
+.topnav.solid,
+.bar.stuck {
   padding-top: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
@@ -125,8 +130,9 @@ a {
 .head-search .search-field {
   --pad-y: 4px;
   --pad-r: 6px;
+  --pad-l: 16px;
   min-height: 48px;
-  padding: var(--pad-y) var(--pad-r) var(--pad-y) 16px;
+  padding: var(--pad-y) var(--pad-r) var(--pad-y) var(--pad-l);
   border-radius: 12px;
   box-shadow: none;
 }
@@ -179,9 +185,11 @@ a {
   text-decoration: none;
 }
 
-.nav-links a:hover {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.06);
+@media (hover: hover) {
+  .nav-links a:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
 .nav-links a.current {
@@ -207,8 +215,10 @@ a {
   cursor: pointer;
 }
 
-.lang-button:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .lang-button:hover {
+    color: var(--text);
+  }
 }
 
 .lang-list {
@@ -242,7 +252,12 @@ a {
   cursor: pointer;
 }
 
-.lang-list button:hover,
+@media (hover: hover) {
+  .lang-list button:hover {
+    background: rgba(255, 255, 255, 0.07);
+  }
+}
+
 .lang-list button:focus-visible {
   background: rgba(255, 255, 255, 0.07);
   outline: none;
@@ -266,12 +281,22 @@ a {
    of the width (the negative margin takes back 9/16 − 5/12 = 7/48): the search sits on the
    video and its lower part runs on under the tag cloud. */
 
-/* its own block, so the frame's negative margin and the page's (main.on-hero) add up
+/* its own block, so the frame's negative margin and the search's (.bar) add up
    instead of collapsing into the larger one */
 .hero {
   display: flow-root;
 }
 
+/* how far the frame's top fades out: only while the intro holds it in the middle of a tall
+   screen, where its top edge shows */
+@property --top-fade {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
+}
+
+/* the frame's edges go transparent rather than to the page's colour, so the page's own
+   background, dots and all, shows through and no edge is left */
 .hero-frame {
   position: relative;
   width: min(100%, 1920px);
@@ -280,6 +305,8 @@ a {
   overflow: hidden;
   container-type: inline-size;
   background: var(--bg);
+  mask-image: linear-gradient(180deg, transparent, #000 var(--top-fade), #000 82%, transparent);
+  transition: --top-fade 0.6s ease;
 }
 
 .hero-media {
@@ -337,51 +364,298 @@ a {
 /* past the frame's widest size, the sides fade into the page instead of ending on an edge */
 @media (min-width: 1921px) {
   .hero-frame {
-    mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+    mask-image:
+      linear-gradient(180deg, transparent, #000 var(--top-fade), #000 82%, transparent),
+      linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+    mask-composite: intersect;
+  }
+}
+
+/* Credits during the intro (Hero.tsx), each in its own part of the frame: top, middle or
+   low, at the left or the right edge */
+.credits {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.75);
+  --top: 9cqw;
+  --middle: 21cqw;
+  --low: 31cqw;
+  --side: 7%;
+}
+
+.credit {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.7cqw;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(0.8cqw);
+  transition:
+    opacity 0.7s ease,
+    filter 0.7s ease,
+    transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.credit.tl,
+.credit.tr {
+  top: var(--top);
+}
+
+.credit.ml,
+.credit.mr {
+  top: var(--middle);
+}
+
+.credit.bl,
+.credit.br {
+  top: var(--low);
+}
+
+.credit:is(.tl, .ml, .bl) {
+  left: var(--side);
+}
+
+.credit:is(.tr, .mr, .br) {
+  right: var(--side);
+  align-items: flex-end;
+  text-align: right;
+}
+
+.credit.on {
+  opacity: 1;
+  filter: none;
+  transform: none;
+}
+
+.credit small {
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: max(0.6rem, 0.95cqw);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 3px #000,
+    0 1px 10px rgba(0, 0, 0, 0.9);
+}
+
+.credit strong {
+  font-family: var(--display);
+  font-size: max(0.95rem, 2.8cqw);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+/* a sponsor stands alone, so its logo is about as big as a name */
+.credit .logo {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: max(1.1rem, 2.8cqw);
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.6));
+}
+
+.credit .logo img,
+.credit img.logo {
+  display: block;
+  width: auto;
+}
+
+/* The intro (intro.ts): each part of the page waits for its scene of the video. The
+   classes go once everything is in, so none of this is left on the page afterwards. */
+html.intro :is(.topnav, .ribbon, .hero p, main > *, footer, .bar) {
+  transition:
+    opacity 0.9s ease,
+    transform 1.1s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+html.intro.fast :is(.topnav, .ribbon, .hero p, main > *, footer, .bar) {
+  transition-duration: 0.35s;
+}
+
+html.intro:not(.at-title) .hero h1,
+html.intro:not(.at-nav) :is(.topnav, .hero p, .bar, .replay),
+html.intro:not(.at-feed) :is(main > *, footer) {
+  pointer-events: none;
+}
+
+html.intro:not(.at-title) .hero h1 {
+  opacity: 0;
+}
+
+/* on a screen taller than the frame, the video waits in the middle of it and goes up to
+   its place as the crowd first moves */
+.hero {
+  --frame-height: calc(min(100vw, 1920px) * 9 / 16);
+}
+
+html.intro .hero {
+  transition: transform 0.6s cubic-bezier(0.5, 0, 0.2, 1);
+}
+
+html.intro:not(.at-nav) .hero {
+  transform: translateY(max(0px, (100svh - var(--frame-height)) / 2));
+}
+
+/* there the frame's top edge shows too, so it fades out like the bottom one */
+@media (max-aspect-ratio: 16 / 9) {
+  html.intro:not(.at-nav) .hero-frame {
+    --top-fade: 22%;
+  }
+}
+
+@media (max-width: 700px) and (min-aspect-ratio: 4 / 5) {
+  html.intro:not(.at-nav) .hero-frame {
+    --top-fade: 0%;
+  }
+}
+
+/* in the middle of the frame, over Theo in the dance, nothing to see, not even on hover,
+   focus or tap: a click plays the intro again (Hero.tsx) */
+.replay {
+  position: absolute;
+  top: 8%;
+  left: 44%;
+  z-index: 1;
+  width: 12%;
+  height: 38%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: none;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* the title comes out of a blur, the letters closing in */
+html.intro.at-title .hero h1 {
+  animation: title-in 2.4s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+}
+
+html.intro.fast .hero h1 {
+  animation-duration: 0.5s;
+}
+
+html.intro:not(.at-nav) .topnav {
+  opacity: 0;
+  transform: translateY(-16px);
+}
+
+/* the band slides in along itself from the corner */
+html.intro:not(.at-nav) .ribbon {
+  transform: rotate(45deg) translateY(-170px);
+}
+
+html.intro:not(.at-nav) .hero p {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+html.intro:not(.at-nav) .bar {
+  opacity: 0;
+  transform: translateY(14px);
+}
+
+html.intro:not(.at-feed) :is(main > *, footer) {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+@keyframes title-in {
+  from {
+    opacity: 0;
+    filter: blur(16px);
+    letter-spacing: 0.3em;
+    transform: translateY(0.3em);
+  }
+
+  50% {
+    opacity: 0.85;
+  }
+
+  to {
+    opacity: 1;
+    filter: blur(0);
+    letter-spacing: -0.02em;
+    transform: none;
   }
 }
 
 /* Layout */
 
+/* its own block: the first margin inside stays inside, so the space the stuck search keeps
+   under it (.bar.stuck) is not taken up by it */
 main {
+  display: flow-root;
   position: relative;
   max-width: 1228px;
   margin: 0 auto;
   padding: 0 24px 72px;
 }
 
-/* the search sits on the lower edge of the video: half over it, half over the page */
-main.on-hero {
-  margin-top: -47px;
-}
-
-/* The search: part of the page under the title, a solid bar once it sticks to the top */
+/* The search: part of the page under the title, the header of the other pages once it
+   sticks to the top. It sits on the lower edge of the video: half over it, half over the page. */
 
 .bar {
   position: sticky;
   top: 0;
   z-index: 5;
-  margin: 0 -24px;
-  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: -47px;
+  padding: 12px max(24px, calc((100vw - 1180px) / 2));
   border-bottom: 1px solid transparent;
+}
+
+.bar-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.bar-slot {
+  display: contents;
+}
+
+/* Reserve the original field, padding and border when the sticky header shrinks or wraps. */
+@media (min-width: 701px) {
+  .bar-slot {
+    display: block;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    pointer-events: none;
+    margin-top: -47px;
+  }
+
+  .bar-slot:has(.stuck) {
+    height: 95px;
+  }
+
+  .bar {
+    position: relative;
+    pointer-events: auto;
+    margin-top: 0;
+  }
 }
 
 /* wide screens only: below 1000px the ribbon is small and scrolls away with the header */
 @media (min-width: 1001px) {
-  .bar.stuck {
-    padding-right: clamp(24px, calc(250px - (100vw - 1228px) / 2), 230px);
-  }
-
   /* the header row is at the ribbon's widest part, so it always keeps the ribbon's width free */
-  .topnav.solid {
+  .topnav.solid,
+  .bar.stuck {
     padding-right: 250px;
   }
-}
 
-.bar.stuck {
-  background: rgba(13, 11, 16, 0.94);
-  backdrop-filter: blur(10px);
-  border-bottom-color: var(--line);
+  /* read from the top, the results line sits under the band too: its switch keeps clear of it
+     (about 150px from the window's edge; 100% is the column, so this is what its margin lacks) */
+  .results {
+    padding-right: max(0px, calc(150px - (100vw - 100%) / 2));
+  }
 }
 
 .search {
@@ -396,10 +670,11 @@ main.on-hero {
   gap: 8px;
   --pad-y: 10px;
   --pad-r: 12px;
+  --pad-l: 22px;
   /* how far the "and" and "or" tabs reach over and under a chip while dragging */
   --tab: calc(var(--pad-y) + 40px);
   min-height: 70px;
-  padding: var(--pad-y) var(--pad-r) var(--pad-y) 22px;
+  padding: var(--pad-y) var(--pad-r) var(--pad-y) var(--pad-l);
   border: 1px solid var(--line-strong);
   border-radius: 16px;
   background: rgba(23, 20, 28, 0.94);
@@ -409,7 +684,6 @@ main.on-hero {
 }
 
 .bar.stuck .search-field {
-  min-height: 58px;
   box-shadow: none;
 }
 
@@ -485,6 +759,72 @@ main.on-hero {
   --fade-r: 28px;
 }
 
+/* a chip scrolled to (Tab, the caret, a drop) stays clear of the fade and the arrow (ROW_EDGE) */
+.chips {
+  scroll-padding-inline: 40px;
+}
+
+/* arrows over the ends of the row, for a mouse (RowArrow in SearchBox): each lies over its
+   faded end and takes no room (its 32px and the 8px gap given back), and shows on hover */
+.row-arrow {
+  display: none;
+  position: relative;
+  z-index: 1;
+  flex: none;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text-2);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.row-arrow.left {
+  margin-right: -40px;
+}
+
+.row-arrow.right {
+  margin-left: -40px;
+}
+
+.row-arrow .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.row-arrow.left .icon {
+  rotate: 90deg;
+}
+
+.row-arrow.right .icon {
+  rotate: -90deg;
+}
+
+@media (hover: hover) {
+  .row-arrow:hover {
+    background: var(--line-strong);
+    color: var(--text);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .search:not(.dragging, .editing) .search-field:has(> .chips[data-more-left]) > .row-arrow.left,
+  .search:not(.dragging, .editing) .search-field:has(> .chips[data-more-right]) > .row-arrow.right {
+    display: grid;
+  }
+
+  .search-field:hover > .row-arrow {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .chips > * {
   flex: none;
 }
@@ -532,9 +872,11 @@ main.on-hero {
   height: 22px;
 }
 
-.search-clear:hover {
-  background: var(--line-strong);
-  color: var(--text);
+@media (hover: hover) {
+  .search-clear:hover {
+    background: var(--line-strong);
+    color: var(--text);
+  }
 }
 
 .search-kbd {
@@ -628,8 +970,10 @@ main.on-hero {
 
 
 
-.chip:hover {
-  border-color: var(--muted);
+@media (hover: hover) {
+  .chip:hover {
+    border-color: var(--muted);
+  }
 }
 
 .chip .tag-ns {
@@ -1001,11 +1345,21 @@ main.on-hero {
    top with Done beside it, the tags under it down to the keyboard (the visual viewport, which
    the script follows), the page frozen behind it. A header holding it gives up what would
    make it the box's frame instead of the window's. */
+.bar-slot:has(.search.editing),
 .bar:has(.search.editing),
 .topnav:has(.search.editing) {
   z-index: 40;
   transform: none;
   backdrop-filter: none;
+}
+
+/* in the intro too, mid-way or not yet in: the editing screen is the window's, and a bar still
+   moving in would be its frame (a transform makes it one), so it stands where it is going */
+html.intro .bar:has(.search.editing) {
+  opacity: 1;
+  transform: none;
+  transition: none;
+  pointer-events: auto;
 }
 
 .search.editing {
@@ -1147,6 +1501,7 @@ main.on-hero {
   bottom: 0;
   left: 0;
   z-index: 7;
+  width: auto;
   height: 52px;
   margin: 0;
   border-top: 1px solid var(--line-strong);
@@ -1166,6 +1521,42 @@ main.on-hero {
 
 .search.editing:not(.dragging) .drop-zone {
   opacity: 0.4;
+}
+
+/* a phone on its side has the wide layout: the screen takes from the phone's what it needs */
+.search.editing .search-field {
+  --pad-y: 6px;
+  --pad-r: 6px;
+}
+
+.search.editing .search-field input {
+  font-size: 1.05rem;
+}
+
+.search.editing .search-kbd,
+.search.editing .drop-add {
+  display: none;
+}
+
+.search.editing .drop-board > :first-child {
+  border-left: 0;
+}
+
+/* a screen too short for the zones under the tags (SearchBox: SHORT_VIEW): the tags take the
+   room down to the keyboard, and the zones open over them, under the bar, only for a drag */
+.search.editing[data-short] .search-drop {
+  margin-bottom: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.search.editing[data-short] .drop-board {
+  top: 56px;
+  bottom: auto;
+}
+
+.search.editing[data-short]:not(.dragging) .drop-board {
+  visibility: hidden;
 }
 
 /* the query in words, at the top of the dropdown */
@@ -1188,18 +1579,54 @@ main.on-hero {
 
 
 
+@media (min-width: 701px) {
+  .topnav.solid,
+  .bar.stuck {
+    flex-wrap: wrap;
+  }
+
+  /* too narrow beside the links for its chips and a drag's zones (up to about 1024px, wider in
+     Russian), the search takes a row of its own */
+  .topnav.solid .head-search,
+  .bar.stuck .head-search {
+    flex-basis: 320px;
+  }
+
+
+  .head-search .search:not(.editing) .search-drop {
+    left: auto;
+    min-width: min(440px, calc(100vw - 32px));
+    width: 100%;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .search .search-kbd {
+    display: none;
+  }
+}
+
 .search-drop {
+  overscroll-behavior: contain;
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
   right: 0;
-  max-height: 60vh;
+  /* no further down than the window (SearchBox: fitDrop) */
+  max-height: min(60vh, var(--drop-room, 60vh));
   overflow: auto;
   padding: 14px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* little room under the box and more over it: the dropdown opens upwards (SearchBox: fitDrop) */
+.search-drop[data-up] {
+  top: auto;
+  bottom: calc(100% + 8px);
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
 }
 
 .suggestions {
@@ -1234,6 +1661,8 @@ main.on-hero {
 }
 
 .suggest-text {
+  overflow-wrap: anywhere;
+  min-width: 0;
   font-family: "Golos Text Variable", sans-serif;
 }
 
@@ -1294,12 +1723,7 @@ main.on-hero {
   background: var(--ns, var(--line-strong));
 }
 
-/* Tag cloud under the search */
-
-.hero-cloud {
-  max-width: 1180px;
-  margin: 18px auto 0;
-}
+/* Tag cloud, in the search's dropdown */
 
 .cloud {
   display: grid;
@@ -1346,8 +1770,10 @@ main.on-hero {
   cursor: pointer;
 }
 
-.cloud-more:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .cloud-more:hover {
+    text-decoration: underline;
+  }
 }
 
 /* Segmented switches: feed layout, cloud order, tag order */
@@ -1375,8 +1801,10 @@ main.on-hero {
   cursor: pointer;
 }
 
-.segmented button:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .segmented button:hover {
+    color: var(--text);
+  }
 }
 
 .segmented button.current {
@@ -1432,8 +1860,10 @@ main.on-hero {
   background: var(--ns, var(--line-strong));
 }
 
-.tag:hover {
-  border-color: var(--muted);
+@media (hover: hover) {
+  .tag:hover {
+    border-color: var(--muted);
+  }
 }
 
 .tag.active {
@@ -1503,6 +1933,41 @@ main.on-hero {
   margin: 8px 0 0;
 }
 
+/* the tag, and by it a button that takes it out of the search */
+.tag-menu-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tag-menu-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tag-menu-remove .icon {
+  width: 16px;
+  height: 16px;
+}
+
+@media (hover: hover) {
+  .tag-menu-remove:hover {
+    border-color: #e66767;
+    color: var(--text);
+  }
+}
+
 .tag-menu-actions {
   display: grid;
   padding: 4px 0;
@@ -1519,8 +1984,10 @@ main.on-hero {
   cursor: pointer;
 }
 
-.tag-menu-actions button:hover {
-  background: rgba(255, 255, 255, 0.06);
+@media (hover: hover) {
+  .tag-menu-actions button:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
 .preview {
@@ -1564,6 +2031,12 @@ main.on-hero {
   gap: 5px;
 }
 
+/* The feed is at least a window tall, so however few results there are, the page can
+   still stand with the search stuck to the top and the results under it (scroll.ts) */
+.feed {
+  min-height: calc(100vh - 97px);
+}
+
 /* Results line: how many, and how to lay them out */
 
 .results {
@@ -1572,6 +2045,15 @@ main.on-hero {
   justify-content: space-between;
   gap: 16px;
   margin: 40px 0 16px;
+  /* Phone reading position. */
+  scroll-margin-top: 97px;
+}
+
+@media (min-width: 701px) {
+  .results {
+    /* Land at least one pixel past the sticky threshold, including fractional scroll positions. */
+    scroll-margin-top: min(134px, calc(var(--stuck-height, 73px) + 24px));
+  }
 }
 
 .results-count {
@@ -1581,8 +2063,12 @@ main.on-hero {
 }
 
 .nothing {
-  padding: 48px 0;
-  text-align: center;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
 }
 
 /* Our line above a post: kind, time, mood */
@@ -1619,8 +2105,10 @@ main.on-hero {
   text-decoration: none;
 }
 
-.entry-title a:hover {
-  color: var(--accent);
+@media (hover: hover) {
+  .entry-title a:hover {
+    color: var(--accent);
+  }
 }
 
 .star {
@@ -1658,8 +2146,10 @@ main.on-hero {
   background: var(--panel);
 }
 
-.tile:hover {
-  border-color: var(--line-strong);
+@media (hover: hover) {
+  .tile:hover {
+    border-color: var(--line-strong);
+  }
 }
 
 .tile-media .x-card {
@@ -1687,16 +2177,17 @@ main.on-hero {
   line-height: 1.5;
 }
 
-.tile:focus-visible,
-.row:focus-visible {
+.entry-title a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 6px;
   border-radius: 4px;
 }
 
-.tile-body:hover .entry-title a,
-.row-main:hover .entry-title a {
-  color: var(--accent);
+@media (hover: hover) {
+  .tile-body:hover .entry-title a,
+  .row-main:hover .entry-title a {
+    color: var(--accent);
+  }
 }
 
 .tile[data-weight="1"],
@@ -1757,8 +2248,10 @@ main.on-hero {
   background: var(--panel);
 }
 
-.row:hover {
-  border-color: var(--line-strong);
+@media (hover: hover) {
+  .row:hover {
+    border-color: var(--line-strong);
+  }
 }
 
 .row-main {
@@ -1807,8 +2300,10 @@ main.on-hero {
 
 /* A post as x.com draws it in the dark theme */
 
-.x-post:hover {
-  background: #080808;
+@media (hover: hover) {
+  .x-post:hover {
+    background: #080808;
+  }
 }
 
 .x-post:focus-visible {
@@ -1940,9 +2435,11 @@ main.on-hero {
   text-decoration: none;
 }
 
-a.x-name:hover,
-.x-time:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  a.x-name:hover,
+  .x-time:hover {
+    text-decoration: underline;
+  }
 }
 
 .x-text {
@@ -1956,8 +2453,10 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.x-text a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .x-text a:hover {
+    text-decoration: underline;
+  }
 }
 
 .x-media {
@@ -2024,8 +2523,10 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.x-quote:hover {
-  background: #080808;
+@media (hover: hover) {
+  .x-quote:hover {
+    background: #080808;
+  }
 }
 
 .x-quote-head {
@@ -2073,16 +2574,22 @@ a.x-name:hover,
 }
 
 /* X's hover colors: blue for most, green for repost, pink for like */
-.x-action:hover {
-  color: var(--x-blue);
+@media (hover: hover) {
+  .x-action:hover {
+    color: var(--x-blue);
+  }
 }
 
-.x-action[data-action="repost"]:hover {
-  color: #00ba7c;
+@media (hover: hover) {
+  .x-action[data-action="repost"]:hover {
+    color: #00ba7c;
+  }
 }
 
-.x-action[data-action="like"]:hover {
-  color: #f91880;
+@media (hover: hover) {
+  .x-action[data-action="like"]:hover {
+    color: #f91880;
+  }
 }
 
 .x-action .icon {
@@ -2091,7 +2598,24 @@ a.x-name:hover,
   margin: 0 2px 0 6px;
 }
 
+.copy-status {
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  /* the share button's corner is narrower than the word: it stays one line, out to the left */
+  white-space: nowrap;
+  overflow-wrap: normal;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.copy-status:not(:empty) {
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
 .x-action-end {
+  position: relative;
   display: inline-flex;
   flex: none;
   gap: 4px;
@@ -2116,8 +2640,24 @@ a.x-name:hover,
   }
 }
 
-@container (max-width: 300px) {
+@container (max-width: 360px) {
   .x-action-end {
+    display: none;
+  }
+
+  /* four counts in a phone's narrow tile: closer together (over the phone rule for the icons) */
+  .x-actions {
+    gap: 2px;
+  }
+
+  .x-actions .x-action .icon {
+    margin: 0;
+  }
+}
+
+/* narrower still: views go, as the bookmark and share did */
+@container (max-width: 290px) {
+  .x-action[data-action="views"] {
     display: none;
   }
 }
@@ -2172,8 +2712,10 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.x-stamp a:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .x-stamp a:hover {
+    text-decoration: underline;
+  }
 }
 
 .x-stamp strong {
@@ -2270,8 +2812,10 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.back:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .back:hover {
+    color: var(--text);
+  }
 }
 
 .post-title {
@@ -2329,6 +2873,13 @@ a.x-name:hover,
   font-size: 0.92rem;
 }
 
+/* under 16px, Safari on iOS zooms the page in on focus and leaves it zoomed */
+@media (pointer: coarse) {
+  .field {
+    font-size: 16px;
+  }
+}
+
 .field:focus {
   border-color: var(--accent);
   outline: none;
@@ -2345,7 +2896,7 @@ a.x-name:hover,
 
 .tags-index {
   position: sticky;
-  top: calc(var(--bar-height) + 12px);
+  top: calc(max(var(--bar-height), var(--head-height, 0px)) + 12px);
   align-self: start;
   display: grid;
   gap: 2px;
@@ -2362,9 +2913,11 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.tags-index a:hover {
-  background: var(--panel);
-  color: var(--text);
+@media (hover: hover) {
+  .tags-index a:hover {
+    background: var(--panel);
+    color: var(--text);
+  }
 }
 
 .tag-group h2 .tag-count {
@@ -2401,7 +2954,7 @@ a.x-name:hover,
 
 .tag-group {
   margin-top: 32px;
-  scroll-margin-top: calc(var(--bar-height) + 12px);
+  scroll-margin-top: calc(max(var(--bar-height), var(--head-height, 0px)) + 12px);
 }
 
 .tag-group h2 {
@@ -2453,10 +3006,6 @@ a.x-name:hover,
   gap: 6px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
-}
-
-.tag-about.none {
-  color: var(--line-strong);
 }
 
 .tag-about {
@@ -2583,8 +3132,10 @@ a.x-name:hover,
   text-decoration: none;
 }
 
-.bar-label a:not(.tag):hover {
-  color: var(--accent);
+@media (hover: hover) {
+  .bar-label a:not(.tag):hover {
+    color: var(--accent);
+  }
 }
 
 /* the bar takes its share of the track; the value lives in the padding past the longest bar */
@@ -2592,7 +3143,8 @@ a.x-name:hover,
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-right: 48px;
+  padding-right: calc(var(--value-width) + 8px);
+  font: 0.8rem var(--mono);
 }
 
 .bar-fill {
@@ -2604,6 +3156,7 @@ a.x-name:hover,
 
 .bar-value {
   flex: none;
+  white-space: nowrap;
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.8rem;
@@ -2867,6 +3420,8 @@ footer {
 .analysis {
   margin-top: 14px;
   line-height: 1.6;
+  /* a bare link in the text (x.com/…/status/…) breaks rather than widen a phone's page */
+  overflow-wrap: anywhere;
 }
 
 .analysis summary {
@@ -2915,19 +3470,22 @@ footer {
 }
 
 @media (max-width: 1000px) {
-  /* a narrower screen gets a smaller ribbon that stays with the header instead of covering the search */
   .ribbon-box {
-    position: absolute;
-    width: 116px;
-    height: 116px;
+    position: relative;
+    width: 100%;
+    height: 18px;
   }
 
   .ribbon {
-    top: 26px;
-    right: -44px;
-    width: 176px;
-    padding: 4px 0;
-    font-size: 0.68rem;
+    inset: 0 0 auto auto;
+    width: auto;
+    padding: 2px 10px;
+    transform: none;
+    font-size: 0.62rem;
+  }
+
+  .topnav:not(.solid) {
+    top: 18px;
   }
 
   .row {
@@ -2988,10 +3546,74 @@ footer {
     --bar-height: 76px;
   }
 
-  /* the frame keeps its proportions here too; a readable tagline would not fit above the
-     search, so on a phone the title stands alone (the ribbon and footer say "unofficial") */
+  /* a phone gets a tall frame: the video is cropped to the middle of the crowd, with Theo
+     in it, and the title and the start of the page sit in its lower part */
+  .hero-frame {
+    aspect-ratio: 4 / 5;
+    margin-bottom: -24%;
+  }
+
+  .hero {
+    --frame-height: calc(100vw * 5 / 4);
+  }
+
+  /* Theo stands a little left of the video's middle: this puts him in the middle here */
+  .hero-media {
+    object-position: 45% 0;
+  }
+
+  .replay {
+    top: 12%;
+    left: 31%;
+    width: 38%;
+    height: 38%;
+  }
+
+  .hero-frame::after {
+    background:
+      linear-gradient(180deg, transparent 52%, rgba(13, 11, 16, 0.6) 76%, var(--bg) 100%),
+      linear-gradient(180deg, rgba(13, 11, 16, 0.55) 0%, transparent 18%);
+  }
+
+  .hero-text {
+    top: auto;
+    right: 16px;
+    bottom: 31%;
+    left: 16px;
+  }
+
+  .hero h1 {
+    font-size: 11cqw;
+  }
+
+  /* the credits use the tall frame, under the menu and on Theo's shirt: in the middle
+     they would cover his face, so the middle row moves down to the low one */
+  .credits {
+    --top: 24cqw;
+    --middle: 90cqw;
+    --low: 90cqw;
+    --side: 16px;
+  }
+
+  .credit {
+    gap: 6px;
+  }
+
+  .credit small {
+    font-size: 0.68rem;
+  }
+
+  .credit strong {
+    font-size: 7.5cqw;
+  }
+
+  .credit .logo {
+    font-size: 7cqw;
+  }
+
   .hero p {
-    display: none;
+    margin: 8px 0 0 2px;
+    font-size: 0.92rem;
   }
 
   .topnav {
@@ -3031,13 +3653,22 @@ footer {
     padding: 0 12px 48px;
   }
 
-  main.on-hero {
+  .bar {
     margin-top: -38px;
   }
 
-  .bar {
-    margin: 0 -12px;
+  .bar,
+  .bar.stuck {
     padding: 8px 12px;
+  }
+
+  /* a phone has no room for the header's row: the search sticks alone */
+  .bar :is(.brand, .nav-links, .lang) {
+    display: none;
+  }
+
+  .bar .head-search {
+    margin: 0;
   }
 
   .search-field,
@@ -3045,7 +3676,8 @@ footer {
     --pad-y: 6px;
     --pad-r: 6px;
     min-height: 56px;
-    padding: var(--pad-y) var(--pad-r) var(--pad-y) 14px;
+    --pad-l: 14px;
+    padding: var(--pad-y) var(--pad-r) var(--pad-y) var(--pad-l);
     border-radius: 14px;
   }
 
@@ -3122,19 +3754,6 @@ footer {
     font-size: 0.8rem;
   }
 
-
-  .hero-cloud .cloud:not(.expanded) .cloud-tags {
-    mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
-    flex-wrap: nowrap;
-    margin: 0 -12px;
-    padding: 0 12px 4px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .hero-cloud .cloud-label {
-    padding-top: 0;
-  }
 
   .results {
     margin-top: 28px;
@@ -3221,30 +3840,247 @@ footer {
 
 }
 
-/* touch screens have no hover: a tapped link or card must not stay lit */
-@media (hover: none) {
-  .bar-label a:not(.tag):hover,
-  .tile-body:hover .entry-title a,
-  .row-main:hover .entry-title a {
-    color: var(--text);
+/* Under a finger: tags, X's actions and the page links are small to look at but take a press
+   from a little around them (an invisible margin), toward the 44px a finger needs. */
+@media (pointer: coarse) {
+  .tag:not(.drag-ghost),
+  .x-action {
+    position: relative;
   }
 
-  .tags-index a:hover {
-    background: none;
-    color: var(--text-2);
+  .tag:not(.drag-ghost)::after,
+  .x-action::after {
+    content: "";
+    position: absolute;
+    inset: -7px -3px;
   }
 
-  .tile:hover {
-    border-color: var(--line);
+  .x-action::after {
+    inset: -12px -10px;
   }
 
-  .x-post:hover {
-    background: none;
+  .nav-links a {
+    padding-block: 10px;
+  }
+}
+
+/* the menu's previews on a narrow phone: an "or" of two long tags goes on two lines, not off the edge */
+.preview .chip-group {
+  flex-wrap: wrap;
+}
+
+/* The menu is as wide as it is set, whatever its title: a long tag wraps its line, the remove
+   button stays inside, and the previews below wrap too. */
+.tag-menu {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tag-menu-title {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.tag-menu-title > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* the language list from the button's right edge, when there is no room on the right (App: LangMenu) */
+.lang-list.from-right {
+  right: 0;
+  left: auto;
+}
+
+/* The search in a header (the other pages' and the stuck bar's), at every width: a narrow one
+   wraps its row for a drag, the zones taking a row of their own (on a phone too) */
+.head-search .search:not(.editing) {
+  container: header-search / inline-size;
+}
+
+@container header-search (max-width: 560px) {
+  .search.dragging .search-field {
+    flex-wrap: wrap;
   }
 
-  /* a tag in the search keeps its frame: a tapped one stays hovered */
-  .tag:not(.active):hover,
-  .chip:hover {
-    border-color: var(--line);
+  .search.dragging .chips {
+    flex: 1;
+  }
+
+  .drop-add {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
+  .drop-board {
+    flex: 1 0 100%;
+    width: auto;
+    min-height: 40px;
+    margin: 0 0 calc(-1 * var(--pad-y));
+    border-top: 1px dashed var(--line-strong);
+  }
+
+  .drop-zone {
+    min-width: 0;
+    padding: 0 4px;
+  }
+}
+
+/* The search in a header at the top of the window (stuck to it, or on the other pages): the "and"
+   tabs hang down under the chips, as on a phone's editing screen, not up off the window. */
+.head-search .search.dragging .chips {
+  margin-top: 0;
+  margin-bottom: calc(-1 * var(--tab) - 6px);
+  padding-top: 0;
+  padding-bottom: calc(var(--tab) + 6px);
+}
+
+.head-search .search .and-tab {
+  top: calc(100% - 1px);
+  bottom: auto;
+  place-items: end center;
+  padding: 0 0 10px;
+  border-top: 0;
+  border-bottom: 1px dashed var(--muted);
+  border-radius: 0 0 10px 10px;
+  animation-name: tab-down;
+}
+
+.head-search .search .term:has(.and-tab) .chip {
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+}
+
+/* a narrow header search while dragging: "+ Add (and)" keeps to part of the row, the chips the rest */
+@container header-search (max-width: 560px) {
+  .drop-add {
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* A narrow header search while dragging: the zones go above the chips, so the "and" tabs, which
+   hang down there, fall on the page under the box, not on the zones. */
+@container header-search (max-width: 560px) {
+  .head-search .search.dragging .drop-board {
+    /* before the search icon too (-1), or the icon would be a row of its own above it */
+    order: -2;
+    /* the box's whole width, out over its padding, its top corners rounded as the box's are */
+    flex: 1 0 calc(100% + var(--pad-l) + var(--pad-r));
+    margin: calc(-1 * var(--pad-y)) calc(-1 * var(--pad-r)) 0 calc(-1 * var(--pad-l));
+    border-top: 0;
+    border-bottom: 1px dashed var(--line-strong);
+  }
+
+  .head-search .search.dragging .drop-board > :first-child {
+    border-left: 0;
+    border-radius: 11px 0 0 0;
+  }
+
+  .head-search .search.dragging .drop-board > :last-child {
+    border-radius: 0 11px 0 0;
+  }
+}
+
+/* a phone's short editing screen: the zones under the "and" tabs, not over them */
+.search.editing[data-short].dragging .drop-board {
+  top: calc(56px + var(--tab) + 8px);
+}
+
+/* a negated tag inside an "and" group reads as a negated chip does */
+.part.neg .tag-name {
+  text-decoration: line-through;
+  text-decoration-color: #e66767;
+  text-decoration-thickness: 2px;
+}
+
+.part.neg > :first-child::before {
+  content: "−";
+  margin-right: 4px;
+  color: #e66767;
+  font-weight: 700;
+}
+
+/* the tag menu: a chip longer than the menu (a long text search) wraps inside it */
+.tag-menu {
+  overflow-x: hidden;
+}
+
+.tag-menu .chip,
+.tag-menu .chip-group {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tag-menu .chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* a long chip wrapping in the menu: the square and the namespace keep their size, the name wraps */
+.tag-menu .chip::before,
+.tag-menu .chip .tag-ns {
+  flex: none;
+  white-space: nowrap;
+}
+
+.tag-menu .chip .tag-name {
+  min-width: 0;
+}
+
+/* a phone: the header scrolls away with the page, so a heading jumped to sits near the top */
+@media (max-width: 700px) {
+  .tag-group {
+    scroll-margin-top: 12px;
+  }
+}
+
+/* an "and" group in a menu preview wraps between its parts, never inside a tag or the "and" */
+.tag-menu .and-group {
+  flex-wrap: wrap;
+  row-gap: 3px;
+  min-width: 0;
+}
+
+.tag-menu .and-group > *,
+.tag-menu .and-group .part::before {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* (a part longer than the menu, a phrase searched for: it breaks inside, as a chip of its own does) */
+.tag-menu .and-group > .part {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  video.hero-media {
+    visibility: hidden;
+  }
+}
+
+@media (forced-colors: active) {
+  .bar-fill, .split-kept, .hour-bar, .chip::before, .tag::before,
+  .ns-mark, .suggestions li::before, .and-group .part::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
+
+  .split-dropped, .hour.peak .hour-bar {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+
+  .nav-links a.current, .segmented button.current, .lang-list button.current,
+  .tag.active, .suggestions li.active {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .search-field input:focus, .field:focus, .lang-list button:focus-visible {
+    outline: 2px solid CanvasText;
   }
 }

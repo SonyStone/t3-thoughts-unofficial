@@ -1,5 +1,15 @@
 // Real mouse drags of every chip onto every drop place, printing the query after each: node scripts/check-drag.mjs (dev server on :5173)
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
+// the tag cloud is in the search's dropdown, which a focused field opens (the page has none)
+const cloudTag = async (p, text) => {
+  if (!(await p.locator(".search-drop .cloud").count())) {
+    await p.locator(".search-field input").focus();
+    await p.waitForTimeout(250);
+  }
+  return text === undefined ? p.locator(".search-drop .tag") : p.locator(".search-drop .tag", { hasText: text }).first();
+};
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 page.setDefaultTimeout(4000);
@@ -11,7 +21,7 @@ const state = () => page.evaluate(() => ({ dragging: !!document.querySelector(".
 const base = "open-source -business ui";
 async function tryDrag(name, sourceText, to) {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(base));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent(base));
   await page.waitForTimeout(700);
   const a = await page.locator(".search .chip", { hasText: sourceText }).first().boundingBox();
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
@@ -44,9 +54,9 @@ for (const src of ["open-source", "business", "ui"]) {
 }
 // inside an "or" group, the "and" tab over an alternative makes (it and the tag)
 await page.goto("about:blank");
-await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent("model:claude || harness"));
+await page.goto(SITE + "/#/?q=" + encodeURIComponent("model:claude || harness"));
 await page.waitForTimeout(300);
-const tag = await page.locator(".hero-cloud .tag", { hasText: "agents" }).first().boundingBox();
+const tag = await (await cloudTag(page, "agents")).boundingBox();
 await page.mouse.move(tag.x + 10, tag.y + 8);
 await page.mouse.down();
 await page.mouse.move(tag.x + 30, tag.y - 20, { steps: 3 });
@@ -65,7 +75,7 @@ await browser.close();
 {
   const browser2 = await chromium.launch();
   const p2 = await browser2.newPage({ viewport: { width: 1440, height: 900 } });
-  await p2.goto("http://localhost:5173/#/?q=" + encodeURIComponent("model:claude || (harness agents)"));
+  await p2.goto(SITE + "/#/?q=" + encodeURIComponent("model:claude || (harness agents)"));
   await p2.waitForTimeout(300);
   const a = await p2.locator(".search .chip", { hasText: "model:claude" }).first().boundingBox();
   await p2.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
@@ -88,9 +98,9 @@ await browser.close();
   const read = () => p3.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
   async function dragTag(name, text, to) {
     await p3.goto("about:blank");
-    await p3.goto("http://localhost:5173/#/?q=" + encodeURIComponent(many));
+    await p3.goto(SITE + "/#/?q=" + encodeURIComponent(many));
     await p3.waitForTimeout(300);
-    const t = await p3.locator(".hero-cloud .tag", { hasText: text }).first().boundingBox();
+    const t = await (await cloudTag(p3, text)).boundingBox();
     await p3.mouse.move(t.x + 10, t.y + 8);
     await p3.mouse.down();
     await p3.mouse.move(t.x + 30, t.y - 20, { steps: 3 });
@@ -130,10 +140,10 @@ await browser.close();
     return mid(p3.locator(".search .chips > .clause:not(:has(.carried))").last());
   });
   // an excluded tag counts as used in the cloud
-  console.log("excluded ui marked used".padEnd(28), "->", await p3.locator(".hero-cloud .tag.active.excluded", { hasText: "ui" }).count());
+  console.log("excluded ui marked used".padEnd(28), "->", (await cloudTag(p3), await p3.locator(".search-drop .tag.active.excluded", { hasText: "ui" }).count()));
   // a chip carried out of a group of two leaves no "or" behind it, so no "and" tabs either
   await p3.goto("about:blank");
-  await p3.goto("http://localhost:5173/#/?q=" + encodeURIComponent("(model:claude || company:anthropic) harness"));
+  await p3.goto(SITE + "/#/?q=" + encodeURIComponent("(model:claude || company:anthropic) harness"));
   await p3.waitForTimeout(300);
   const c = await p3.locator(".search .chip", { hasText: "model:claude" }).first().boundingBox();
   await p3.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
@@ -153,9 +163,9 @@ await browser.close();
   const read = () => p4.evaluate(() => new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"));
   async function dragPart(name, grab, to, shot) {
     await p4.goto("about:blank");
-    await p4.goto("http://localhost:5173/#/?q=" + encodeURIComponent(grouped));
+    await p4.goto(SITE + "/#/?q=" + encodeURIComponent(grouped));
     await p4.waitForTimeout(300);
-    const a = await grab().boundingBox();
+    const a = await (await grab()).boundingBox();
     await p4.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await p4.mouse.down();
     await p4.mouse.move(a.x + a.width / 2 + 15, a.y + 60, { steps: 3 });
@@ -174,7 +184,7 @@ await browser.close();
   }
   const mid = async (loc) => { const b = await loc.boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
   const part = (text) => () => p4.locator(".search .part", { hasText: text }).first();
-  const fromCloud = (text) => () => p4.locator(".hero-cloud .tag", { hasText: text }).first();
+  const fromCloud = (text) => () => cloudTag(p4, text);
   await dragPart("part ui -> add", part("ui"), () => mid(p4.locator(".drop-add")), "/tmp/part-drag.png");
   await dragPart("part ui -> without", part("ui"), () => mid(p4.locator(".drop-zone.negate")));
   await dragPart("part ui -> only", part("ui"), () => mid(p4.locator(".drop-zone", { hasText: "Only" })));
@@ -185,7 +195,7 @@ await browser.close();
   await dragPart("part p-v-f -> add", part("prompts-vs-features"), () => mid(p4.locator(".drop-add")));
   await dragPart("cloud ui (a part) -> add", fromCloud("ui"), () => mid(p4.locator(".drop-add")));
   // a click on a part opens the menu for that tag, not for the group
-  await p4.goto("http://localhost:5173/#/?q=" + encodeURIComponent(grouped));
+  await p4.goto(SITE + "/#/?q=" + encodeURIComponent(grouped));
   await p4.waitForTimeout(300);
   await part("ui")().click();
   console.log("click on part ui".padEnd(28), "-> menu:", JSON.stringify((await p4.locator('[role="menu"]').innerText()).split("\n")[0]));

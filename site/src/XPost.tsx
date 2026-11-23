@@ -1,6 +1,7 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onCleanup, Show } from "solid-js";
+import { hasCardSelection } from "./cardSelection";
 import { answersFeed, previous, type Entry, type ForeignPost, type Item, type Metrics } from "./content";
-import { formatCount, formatDate, t } from "./i18n";
+import { formatCount, formatDate, formatTightCount, t } from "./i18n";
 import { Icon, type IconName } from "./icons";
 import avatar from "../../assets/theo-avatar.png?url";
 
@@ -65,7 +66,7 @@ function XAvatar(props: { post: ForeignPost; small?: boolean }) {
 /** X's blue check; only Theo gets it here, since the data does not say who else has one. */
 function Verified() {
   return (
-    <svg class="x-verified" viewBox="0 0 22 22" aria-label="Verified account">
+    <svg class="x-verified" viewBox="0 0 22 22" role="img" aria-label={t().verified}>
       <path
         fill="currentColor"
         d="M20.4 11c0-1.4-.8-2.6-2-3.2.4-1.3.1-2.8-.9-3.8s-2.5-1.3-3.8-.9C13.1 1.9 11.9 1 10.5 1S7.9 1.9 7.3 3.1c-1.3-.4-2.8-.1-3.8.9s-1.3 2.5-.9 3.8C1.4 8.4.6 9.6.6 11s.8 2.6 2 3.2c-.4 1.3-.1 2.8.9 3.8s2.5 1.3 3.8.9c.6 1.2 1.8 2.1 3.2 2.1s2.6-.9 3.2-2.1c1.3.4 2.8.1 3.8-.9s1.3-2.5.9-3.8c1.2-.6 2-1.8 2-3.2z"
@@ -139,12 +140,19 @@ function XMedia(props: { urls: string[] }) {
 
 /** Opens a post on x.com, as a link would; links inside the post keep their own targets. */
 function openOnX(url: string | undefined) {
+  // a double or triple click selects words or the paragraph: the first click waits a moment to
+  // see whether more follow (the browser still counts that as the click opening the tab)
+  let wait: number | undefined;
+  onCleanup(() => clearTimeout(wait));
   return {
     role: "link" as const,
     tabindex: "0",
     onClick: (event: MouseEvent) => {
       event.stopPropagation();
-      if (url && !(event.target as HTMLElement).closest("a, button")) window.open(url, "_blank", "noopener");
+      clearTimeout(wait);
+      const post = event.currentTarget as Element;
+      if (!url || event.detail > 1 || (event.target as HTMLElement).closest("a, button")) return;
+      wait = window.setTimeout(() => !hasCardSelection(post) && window.open(url, "_blank", "noopener"), 300);
     },
     onKeyDown: (event: KeyboardEvent) => {
       if (event.key !== "Enter" || !url || event.target !== event.currentTarget) return;
@@ -157,20 +165,30 @@ function openOnX(url: string | undefined) {
 const STATUS_ID = /\/status\/(\d+)/;
 
 /** Each action opens X's own page for it, so a click does what the icon promises. */
-const ACTIONS: [IconName, keyof Metrics | undefined, (id: string) => string][] = [
+const ACTIONS: [Extract<IconName, "reply" | "repost" | "like" | "views">, keyof Metrics | undefined, (id: string) => string][] = [
   ["reply", "replies", (id) => `https://x.com/intent/tweet?in_reply_to=${id}`],
   ["repost", "reposts", (id) => `https://x.com/intent/retweet?tweet_id=${id}`],
   ["like", "likes", (id) => `https://x.com/intent/like?tweet_id=${id}`],
   ["views", "views", (id) => `https://x.com/i/status/${id}`],
 ];
 
-async function share(url: string) {
-  if (navigator.share) await navigator.share({ url }).catch(() => undefined);
-  else await navigator.clipboard?.writeText(url);
-}
-
 /** The action bar: counts as X shows them; the moment they were taken is in the tooltip. */
 function XActions(props: { metrics?: Metrics; url?: string; focused?: boolean }) {
+  const [copied, setCopied] = createSignal(false);
+  let timer: number | undefined;
+  onCleanup(() => clearTimeout(timer));
+  async function share(url: string) {
+    if (navigator.share) return navigator.share({ url }).catch(() => undefined);
+    if (!navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      clearTimeout(timer);
+      timer = window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard access can be denied by the browser.
+    }
+  }
   const id = () => props.url?.match(STATUS_ID)?.[1];
   const asOf = () =>
     props.metrics ? t().metrics.asOf(formatDate(new Date(props.metrics.capturedAt), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) : undefined;
@@ -182,23 +200,23 @@ function XActions(props: { metrics?: Metrics; url?: string; focused?: boolean })
         {([icon, key, href]) => {
           const value = () => (key && props.metrics ? (props.metrics[key] as number | undefined) : undefined);
           return (
-            <a class="x-action" data-action={icon} href={id() ? href(id()!) : props.url} target="_blank" rel="noreferrer" aria-label={icon} onClick={stop}>
+            <a class="x-action" data-action={icon} href={id() ? href(id()!) : props.url} target="_blank" rel="noreferrer" aria-label={t().xAction[icon]} onClick={stop}>
               <Icon name={icon} />
               <Show when={value() !== undefined && value()! > 0}>
-                <span>{formatCount(value()!)}</span>
+                <span>{formatTightCount(value()!)}</span>
               </Show>
             </a>
           );
         }}
       </For>
       <span class="x-action-end">
-        <a class="x-action" data-action="bookmark" href={props.url} target="_blank" rel="noreferrer" aria-label="bookmark" onClick={stop}>
+        <a class="x-action" data-action="bookmark" href={props.url} target="_blank" rel="noreferrer" aria-label={t().xAction.bookmark} onClick={stop}>
           <Icon name="bookmark" />
         </a>
         <button
           class="x-action"
           data-action="share"
-          aria-label="share"
+          aria-label={t().xAction.share}
           onClick={(event) => {
             stop(event);
             if (props.url) void share(props.url);
@@ -206,6 +224,7 @@ function XActions(props: { metrics?: Metrics; url?: string; focused?: boolean })
         >
           <Icon name="share" />
         </button>
+        <span class="copy-status" role="status">{copied() ? t().copied : ""}</span>
       </span>
     </div>
   );
@@ -246,10 +265,12 @@ function XStep(props: {
   focused?: boolean;
   /** the post being answered, shown for context in the feed: shorter, without the action bar */
   context?: boolean;
+  /** part of a feed card, which opens our page for it: X is the name, the time and the actions */
+  inCard?: boolean;
   children?: any;
 }) {
   return (
-    <article class={{ "x-post": true, threaded: props.line, focused: !!props.focused, context: !!props.context }} {...openOnX(props.href)}>
+    <article class={{ "x-post": true, threaded: props.line, focused: !!props.focused, context: !!props.context }} {...(props.inCard ? {} : openOnX(props.href))}>
       <Show when={props.above}>
         <div class="x-social">
           <Icon name="repost" />
@@ -376,15 +397,22 @@ export function XCompact(props: { item: Item; lines?: number }) {
   const quoted = () => (props.item.kind === "quote" ? props.item.quoted : undefined);
   const author = () => original() ?? THEO;
   return (
-    <div class="x-card compact" style={{ "--x-lines": String(props.lines ?? 6) }}>
+    <div
+      class="x-card compact"
+      style={{ "--x-lines": String(props.lines ?? 6) }}
+      // in a feed card the links to X (the name, the time, the actions) stay for a click, but Tab
+      // goes from card to card past them: the card itself opens our page, which has them all
+      ref={(el) => queueMicrotask(() => el.querySelectorAll<HTMLElement>("a, button").forEach((link) => (link.tabIndex = -1)))}
+    >
       <Show when={parent()}>
-        {(post) => <XStep post={post()} href={post().url} line context text={post().text} />}
+        {(post) => <XStep post={post()} href={post().url} line context inCard text={post().text} />}
       </Show>
       <XStep
         post={author()}
         at={original() ? undefined : props.item.createdAt}
         href={original()?.url ?? props.item.url}
         line={false}
+        inCard
         text={original()?.text ?? props.item.text}
         media={(original()?.media ?? props.item.media).slice(0, 1)}
         metrics={props.item.metrics}

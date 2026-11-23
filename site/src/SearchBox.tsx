@@ -1,23 +1,108 @@
-import { createEffect, createMemo, createSignal, flush, For, onSettled, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, flush, For, onSettled, Show, untrack } from "solid-js";
 import { andWith, applyTag, dropTag, editTerm, excludesTag, moveTerm, toClauses, toQuery, uses, type At, type Clause, type Drop, type Term } from "./clauses";
 import { draggable, dragged, onDrop, over, still, type Dragged } from "./drag";
 import { t } from "./i18n";
 import { Icon } from "./icons";
 import { inWords } from "./inWords";
-import { currentQuery, route, setQuery } from "./route";
+import { changingHere, currentQuery, openScreen, route, setQuery } from "./route";
+import { tokenize } from "./query";
+import { scrollBehavior } from "./motion";
+import { readingTop } from "./scroll";
 import { knowsTerm, suggest, textTerm } from "./search";
 import { namespaceKey, TagLabel } from "./Tag";
 import TagCloud from "./TagCloud";
-import { openAt, openTagMenu } from "./TagMenu";
+import { menuTrigger, openAt, openTagMenu } from "./TagMenu";
 
 /** Where a dragged tag or chip can land: a place among the chips, or one of the big zones. */
 type Target = Drop | "negate" | "remove" | "only" | { andWith: { clause: number; term: number } };
 
-/** A phone: there editing the search is a screen of its own (see `editing`). */
-const PHONE = window.matchMedia("(max-width: 700px)");
+/**
+ * A phone, upright or on its side (wide then, but short, and the keyboard takes most of it):
+ * there editing the search is a screen of its own (see `editing`).
+ */
+const PHONE = window.matchMedia("(max-width: 700px), (pointer: coarse) and (max-height: 500px)");
+
+/**
+ * How far from an end of the row of chips the row keeps a chip or the caret it scrolls to:
+ * clear of the fade there and of the arrow over it (`.chips` has it as its scroll padding).
+ */
+const ROW_EDGE = 40;
+
+/** The editing screen's height under which the bar, the docked zones and two rows of tags do not fit. */
+const SHORT_VIEW = 220;
 
 /** A space ends a term unless it sits inside an open quote. */
 const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
+
+/** Text with query syntax in it (`||`, `OR`, brackets...): it goes in as a query, not as words to find. */
+const OPERATORS = new Set(["||", "&&", "(", ")", "OR", "AND", "NOT"]);
+const hasSyntax = (text: string) => tokenize(text).some((token) => OPERATORS.has(token));
+
+/** The terms typed, as the query reads them: quotes keep a phrase (or text:"…") one term, a comma parts terms as a space does. */
+function termsOf(text: string): string[] {
+  const terms: string[] = [];
+  let sign = "";
+  for (const token of tokenize(text)) {
+    if (token === ",") continue;
+    if (token === "-" || token === "!") sign = token;
+    else {
+      terms.push(sign + token);
+      sign = "";
+    }
+  }
+  return terms;
+}
+
+/** Nothing to search for: a lone minus, an operator, empty quotes (a quoted "NOT" is a word to find). */
+const blank = (text: string) =>
+  !termsOf(text).some((term) => {
+    const bare = term.replace(/^[-!]/, "");
+    return !OPERATORS.has(bare) && !/^[|&]+$/.test(bare) && !!bare.replace(/"/g, "").trim();
+  });
+
+/**
+ * The query with typed syntax added: `|| ui` typed after a chip joins it as an alternative (the
+ * space after a known word has already made it a chip), the chip right before the caret (`at`
+ * chips stand before it); anything else adds clauses, which `insert` then moves to the caret.
+ */
+function withSyntax(query: string, text: string, at: number): string {
+  const lead = /^(?:(\|\||OR\s)|&&|AND\s)\s*/.exec(text);
+  const rest = lead ? text.slice(lead[0].length) : text;
+  const list = toClauses(query);
+  if (lead?.[1] && at > 0) {
+    const joined = toClauses(`(${toQuery([list[at - 1]])}) || (${rest})`);
+    return toQuery([...list.slice(0, at - 1), ...joined, ...list.slice(at)]);
+  }
+  return toQuery([...list, ...toClauses(rest)]);
+}
+
+/** Whether the query has this tag with this sign (not just the tag, as `uses` tells). */
+function hasTerm(query: string, tag: string, neg: boolean): boolean {
+  const found = (t: Term): boolean => (t.neg === neg && t.raw.toLowerCase() === tag.toLowerCase()) || (t.all ?? []).some(found);
+  return toClauses(query).some((c) => !("raw" in c) && c.terms.some(found));
+}
+
+/** The search moved to another place on the page (App: oneSearch): the blur that comes with it is not a leaving. */
+let moving = false;
+export function moveSearch(move: () => void) {
+  moving = true;
+  try {
+    move();
+  } finally {
+    moving = false;
+  }
+}
+
+/**
+ * Whether the keys moved the focus last, not a press: Tab may then go to chips, tags and menus.
+ * Noted before any other key handler (a menu's arrows move the focus in theirs), so from here.
+ */
+let byKeys = false;
+window.addEventListener("keydown", () => (byKeys = true), true);
+window.addEventListener("pointerdown", () => (byKeys = false), true);
+
+/** The shortcut that focuses the search, as this keyboard has it. */
+const MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /**
  * The search box: the query as chips (AND between chips, OR inside a group), then a text
@@ -26,10 +111,10 @@ const openQuote = (text: string) => (text.match(/"/g)?.length ?? 0) % 2 === 1;
  * and tags from the page can be dragged in (drag.ts): between chips (its own chip there), onto
  * the middle of a chip (an "or" with it), onto the zones of the box, onto the "and" tab over an
  * alternative in an "or" group; a chip let go off the box leaves the query.
- * `/` and ⌘K focus it from anywhere. Once it sticks to the top, focusing it shows the
- * tag cloud in a dropdown.
+ * `/` and ⌘K focus it from anywhere. Focusing it shows the tag cloud in a dropdown (the page
+ * has none of its own).
  */
-export default function SearchBox(props: { stuck: boolean }) {
+export default function SearchBox() {
   let input: HTMLInputElement | undefined;
   let root: HTMLDivElement | undefined;
   /** The one row of chips; what does not fit scrolls sideways. */
@@ -42,13 +127,23 @@ export default function SearchBox(props: { stuck: boolean }) {
   const [focused, setFocused] = createSignal(false);
   const [active, setActive] = createSignal(0);
 
-  const clauses = createMemo(() => toClauses(route().q));
+  // a clause the new query still has keeps its object, so its chip (and the focus on it) stays
+  const clauses = createMemo((prev: Clause[] | undefined) => {
+    const next = toClauses(route().q);
+    if (!prev) return next;
+    const left = new Map<string, Clause[]>();
+    for (const clause of prev) {
+      const key = toQuery([clause]);
+      left.set(key, [...(left.get(key) ?? []), clause]);
+    }
+    return next.map((clause) => left.get(toQuery([clause]))?.shift() ?? clause);
+  });
   // tags for one word; the words themselves as a text search, last, for anything that is not all
   // tags; a term the search knows (a field, kind:reply) stays as it is, and a quoted phrase is text
   const options = createMemo((): [string, number][] => {
     const value = draft().trim();
-    if (!focused() || !value) return [];
-    const words = value.split(/\s+/);
+    if (!focused() || !value || blank(value) || hasSyntax(value)) return [];
+    const words = termsOf(value);
     if (words.length > 1) return words.every(knowsTerm) ? [] : [[textTerm(value), -1]];
     const tags = suggest(value.replace(/^[-!]/, ""));
     return knowsTerm(value) && !/^[-!]?"/.test(value) ? tags : [...tags, [textTerm(value), -1]];
@@ -78,13 +173,85 @@ export default function SearchBox(props: { stuck: boolean }) {
     else openAt(el ?? null, tag, x, y);
   };
 
+  /** Set while the editing screen is being closed (Done, Escape, Back). */
+  let leaving = false;
   /** A tag or chip: what a finger presses to pick up or open a menu, never to type in. */
   const grabs = (el: HTMLElement) => !!el.closest(".tag, .chip, .part");
   const stopEditing = () => {
-    input?.blur();
+    rewind = true;
+    setWithin(false);
+    // a leaving, whatever was pressed last (a tag, a chip's menu): the field does not take the focus back
+    leaving = true;
+    try {
+      input?.blur();
+    } finally {
+      leaving = false;
+    }
+    // the focus was on a chip's menu: the text in the field goes in all the same
+    commit(draft());
     setEditing(false);
   };
-  const showCloud = () => !draft().trim() && ((focused() && props.stuck) || editing());
+  // the phone turned (or the window changed size) with the search in use: the screen opens or
+  // goes to match, and the field keeps the focus
+  // (in the middle of a drag, the screen waits for the drop: the zones under the finger stay)
+  let turnLater = false;
+  const turned = () => {
+    if (dragged()) {
+      turnLater = true;
+      return;
+    }
+    const typing = !!input && document.activeElement === input;
+    if (PHONE.matches) {
+      if (typing) startEditing();
+    } else if (editing()) {
+      if (!typing) rewind = true;
+      setEditing(false);
+    }
+  };
+  createEffect(
+    () => !!dragged(),
+    (on) => {
+      if (on || !turnLater) return;
+      turnLater = false;
+      queueMicrotask(turned);
+    },
+  );
+  onSettled(() => {
+    PHONE.addEventListener("change", turned);
+    return () => PHONE.removeEventListener("change", turned);
+  });
+  /**
+   * Set when the search is left (Done, a tap or Tab away): the row of chips goes back to its
+   * start then, so the page shows the query from its first chip, not from where the caret was.
+   * Not when the focus goes to a chip or an arrow of the box: that is still working on it.
+   */
+  let rewind = false;
+  /** Whether the last press was on the box: the focus then moves within it, even with no relatedTarget. */
+  let pressedInBox = false;
+  /** What the last press was on: a chip without the focus (a part of a group) says so only here. */
+  let pressed: Element | undefined;
+  /**
+   * The focus is in the dropdown or on a menu opened from it, with the keys: a tag of the cloud whose
+   * menu is open, or gets the focus back from it, keeps the cloud it is in.
+   */
+  const [within, setWithin] = createSignal(false);
+  /** Focus there keeps the cloud open: the cloud itself, and Clear, which Tab passes on the way to it. */
+  const holds = (to: Element | null) => !!to && !!root?.contains(to) && !!to.closest(".search-drop, .search-clear");
+  // a menu of a tag of the cloud, with the focus in it, closed by a press elsewhere (or a drag out
+  // of it ending): the focus went nowhere, which no focusout says, and the cloud goes with it
+  createEffect(
+    () => !!menuTrigger(),
+    (open) => {
+      if (open) return;
+      // (another menu opened in its place, or a press in the cloud closed it: the cloud is in use)
+      requestAnimationFrame(() => {
+        const at = document.activeElement;
+        if (untrack(within) && !untrack(menuTrigger) && !(!byKeys && holds(pressed ?? null)) && !holds(at) && !at?.closest(".tag-menu")) setWithin(false);
+      });
+    },
+  );
+  // the page has no tag cloud of its own: a search being worked on shows it, stuck or not
+  const showCloud = () => !draft().trim() && (focused() || editing() || within());
 
   /** Known terms become chips of their own; anything else is one text search chip. */
   /**
@@ -115,31 +282,53 @@ export default function SearchBox(props: { stuck: boolean }) {
     const value = text.trim().replace(/,$/, "").trim();
     if (!value) return;
     const q = currentQuery();
-    const words = value.split(/\s+/);
+    if (blank(value) || hasSyntax(value)) {
+      if (!blank(value)) {
+        // against the query as it is now: chips typed a moment ago may not be in the address yet
+        const count = toClauses(q).length;
+        insert(withSyntax(q, value, Math.min(caret() ?? count, count)));
+      }
+      setDraft("");
+      setActive(0);
+      return;
+    }
+    const words = termsOf(value);
     if (!words.every(knowsTerm)) {
       pick(textTerm(value));
       return;
     }
-    // a negated word goes through the menu logic (no duplicates); other words join as their own clauses
-    insert(/^[-!]\S+$/.test(value) ? applyTag(q, value.slice(1), "exclude") : toQuery([...toClauses(q), ...toClauses(value)]));
+    // each known word as a pick from the list: one already there stays, its opposite flips
+    for (const word of words) putTerm(word);
     setDraft("");
     setActive(0);
   };
 
-  /** A suggestion picked: it joins the search; one the search has already leaves it, as a tag's click does. */
-  const pick = (term: string) => {
-    const negate = /^[-!]/.test(term) || /^[-!]/.test(draft());
-    const tag = term.replace(/^[-!]/, "");
-    insert(applyTag(currentQuery(), tag, negate ? "exclude" : uses(currentQuery(), tag) ? "remove" : "and"));
+  /**
+   * A click toggles a used suggestion. Accepting it from the keyboard keeps it as it is, or turns
+   * it the way it was typed (`-agents` over `agents` excludes it).
+   */
+  const pick = (term: string, toggle = false) => {
+    putTerm(/^[-!]/.test(draft()) && !/^[-!]/.test(term) ? `-${term}` : term, toggle);
     setDraft("");
     setActive(0);
-    input?.focus();
+  };
+
+  /** One term into the query, its sign its own (see `pick`). */
+  const putTerm = (term: string, toggle = false) => {
+    const negate = /^[-!]/.test(term);
+    const tag = term.replace(/^[-!]/, "");
+    const q = currentQuery();
+    const there = hasTerm(q, tag, negate);
+    const action = toggle ? (negate ? (there ? "remove" : "exclude") : uses(q, tag) ? "remove" : "and") : there ? undefined : negate ? "exclude" : "and";
+    if (action) insert(applyTag(q, tag, action));
   };
 
   /** Takes a chip next to the caret back out of the query. */
-  const removeAt = (index: number) => setQuery(toQuery(clauses().filter((_, i) => i !== index)));
+  const removeAt = (index: number) => setQuery(toQuery(toClauses(currentQuery()).filter((_, i) => i !== index)));
 
   const onKeyDown = (event: KeyboardEvent) => {
+    // an IME composing: its Enter, Space and comma pick a candidate, they do not end a term
+    if (event.isComposing || event.keyCode === 229) return;
     fromList = undefined;
     const list = options();
     if (event.key === "Escape") {
@@ -148,7 +337,7 @@ export default function SearchBox(props: { stuck: boolean }) {
       // the chip before the caret comes back as text
       event.preventDefault();
       const index = caretAt() - 1;
-      const chip = clauses()[index];
+      const chip = toClauses(currentQuery())[index];
       removeAt(index);
       setCaret(caret() === undefined ? undefined : index);
       setDraft(asDraft(chip));
@@ -168,14 +357,10 @@ export default function SearchBox(props: { stuck: boolean }) {
     } else if (list.length > 0 && event.key === "ArrowUp") {
       event.preventDefault();
       setActive((active() - 1 + list.length) % list.length);
-    } else if (list.length > 0 && (event.key === "Enter" || event.key === "Tab")) {
+    } else if (list.length > 0 && (event.key === "Enter" || (event.key === "Tab" && !event.shiftKey))) {
       event.preventDefault();
       pick(list[Math.min(active(), list.length - 1)][0]);
-    } else if (event.key === "Enter" || event.key === ",") {
-      event.preventDefault();
-      commit(draft());
-    } else if (event.key === " " && isOneKnownWord(draft())) {
-      // a tag ends at a space; other words keep going, they are a phrase to search for
+    } else if (event.key === "Enter" || endsTerm(event.key, draft())) {
       event.preventDefault();
       commit(draft());
     }
@@ -196,6 +381,15 @@ export default function SearchBox(props: { stuck: boolean }) {
   };
 
   const isOneKnownWord = (text: string) => /^\S+$/.test(text.trim()) && !openQuote(text) && knowsTerm(text);
+  /** Typed syntax that is whole (`|| ui`, `(a b)`): a space after it takes it in, as after a known word. */
+  const isWholeSyntax = (text: string) => {
+    if (!hasSyntax(text) || openQuote(text)) return false;
+    const tokens = tokenize(text);
+    const last = tokens.at(-1)!;
+    const depth = tokens.filter((token) => token === "(").length - tokens.filter((token) => token === ")").length;
+    return depth === 0 && (last === ")" || (!OPERATORS.has(last) && knowsTerm(last)));
+  };
+  const endsTerm = (key: string, text: string) => key === "," ? !openQuote(text) && !hasSyntax(text) : key === " " && (isOneKnownWord(text) || isWholeSyntax(text));
 
   /**
    * The suggestion last pressed: dragged into the search or held for its menu, it changes the
@@ -212,10 +406,29 @@ export default function SearchBox(props: { stuck: boolean }) {
     },
     { defer: true },
   );
+  /** The query as the last press began: a drag that ends with it unchanged was let go of, not used. */
+  let dragFrom: string | undefined;
+  createEffect(
+    () => !!dragged(),
+    (on) => {
+      if (!on && dragFrom !== undefined && untrack(currentQuery) === dragFrom) fromList = undefined;
+    },
+  );
 
-  const onInput = (value: string) => {
+  const onInput = (event: InputEvent & { currentTarget: HTMLInputElement }) => {
     fromList = undefined;
-    setDraft(value);
+    const field = event.currentTarget;
+    const end = field.selectionEnd;
+    // A phone keyboard can insert the separator without sending its keydown.
+    if (!event.isComposing && event.inputType === "insertText" && (event.data === " " || event.data === ",") && end !== null) {
+      const text = field.value.slice(0, end - 1) + field.value.slice(end);
+      if (endsTerm(event.data, text)) {
+        field.value = text;
+        commit(text);
+        return;
+      }
+    }
+    setDraft(field.value);
     setActive(0);
   };
 
@@ -361,24 +574,23 @@ export default function SearchBox(props: { stuck: boolean }) {
   const landOn = (name: string) => {
     const key = name.toLowerCase().replace(/^-/, "");
     const el = row?.querySelector(`[data-flip="${CSS.escape(key)}"], [data-flip="${CSS.escape(`raw:${key}`)}"], [data-flip="${CSS.escape(`raw:-${key}`)}"]`);
-    if (!el || !row) return el;
-    const box = row.getBoundingClientRect();
-    const chip = el.getBoundingClientRect();
-    if (chip.left < box.left) row.scrollLeft -= box.left - chip.left + 24;
-    else if (chip.right > box.right) row.scrollLeft += chip.right - box.right + 24;
-    markEdges();
+    if (el) reveal(el);
     return el;
   };
   /**
    * Where the dragged tag would stand as a chip of its own, while it is over the chips or the
    * "Add" zone: a preview of it opens there, and a drop on the chips puts it there.
    */
-  const [insertAt, setInsertAt] = createSignal<number | undefined>();
+  const [insertAtNow, setInsertAt] = createSignal<number | undefined>();
+  // read only while something is dragged: the drag's end clears them a moment later, not in the
+  // same update that ends it (an effect writing back into it would run its readers twice)
+  const insertAt = () => (dragged() ? insertAtNow() : undefined);
   /**
    * The group the dragged tag would join with "or", while it is over the middle of a chip: the
    * group's frame and a preview of the tag open around that chip.
    */
-  const [joinAt, setJoinAt] = createSignal<number | undefined>();
+  const [joinAtNow, setJoinAt] = createSignal<number | undefined>();
+  const joinAt = () => (dragged() ? joinAtNow() : undefined);
   /** What the preview shows: the dragged tag as its chip would look. */
   const preview = () => {
     const what = dragged();
@@ -442,7 +654,8 @@ export default function SearchBox(props: { stuck: boolean }) {
    * up low on the screen): it takes nothing until the pointer has left it once, so a picked-up
    * tag let go in place does not, say, keep only itself.
    */
-  const [unarmed, setUnarmed] = createSignal<string | undefined>();
+  const [unarmedNow, setUnarmed] = createSignal<string | undefined>();
+  const unarmed = () => (dragged() ? unarmedNow() : undefined);
   const lit = (key: string) => over() === key && unarmed() !== key;
 
   /** A drop shows where its chip went; the row does not jump to the text field after it. */
@@ -455,6 +668,22 @@ export default function SearchBox(props: { stuck: boolean }) {
     row.toggleAttribute("data-more-right", row.scrollLeft + row.clientWidth < row.scrollWidth - 1);
   };
 
+  /** Scrolls the row just enough to show `el` whole, ROW_EDGE in from the end it was past. */
+  const reveal = (el: Element) => {
+    if (!row) return;
+    const box = row.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    if (r.right > box.right - ROW_EDGE) row.scrollLeft += r.right - (box.right - ROW_EDGE);
+    else if (r.left < box.left + ROW_EDGE) row.scrollLeft -= box.left + ROW_EDGE - r.left;
+    markEdges();
+  };
+
+  /** An arrow over an end of the row: a page of chips that way, as a tab bar's arrows do. */
+  const page = (way: -1 | 1) => {
+    if (!row) return;
+    row.scrollBy({ left: way * Math.max(80, row.clientWidth - 2 * ROW_EDGE), behavior: scrollBehavior() });
+  };
+
   // editing on a phone: the page stays where it was, under a screen as tall as what the
   // keyboard leaves (the visual viewport, which a fixed element does not follow by itself)
   createEffect(
@@ -464,6 +693,11 @@ export default function SearchBox(props: { stuck: boolean }) {
       const box = root;
       const y = pressedAt ?? window.scrollY;
       pressedAt = undefined;
+      const { q: from, page: fromPage } = untrack(route);
+      // the screen is a step in the history, which Back closes (route.ts); the page is noted
+      // there where it was pressed, for the browser to put back to that place too
+      window.scrollTo({ top: y, behavior: "instant" });
+      const closeScreen = openScreen(stopEditing);
       const body = document.body.style;
       const was = body.cssText;
       Object.assign(body, { position: "fixed", top: `-${y}px`, left: "0", right: "0" });
@@ -471,32 +705,69 @@ export default function SearchBox(props: { stuck: boolean }) {
       // can be missing) goes back to the field too
       const keep = (event: FocusEvent) => {
         const to = event.target as HTMLElement;
-        if (box.contains(to) && grabs(to)) input?.focus({ preventScroll: true });
+        if (!byKeys && box.contains(to) && grabs(to)) input?.focus({ preventScroll: true });
       };
       box.addEventListener("focusin", keep);
+      // the screen covers the page: Tab goes round what is on it, in every browser (Safari's own
+      // Tab skips buttons and would leave for a link under the screen)
+      // (on the window, so after the field's own keys, which Solid hears on the document: Tab there may pick a suggestion)
+      const tabbable = () =>
+        [...box.querySelectorAll<HTMLElement>("input, button, a[href], [tabindex]")].filter(
+          (el) => el.tabIndex >= 0 && !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0 && !el.closest("[inert], [aria-hidden='true']"),
+        );
+      const cycle = (event: KeyboardEvent) => {
+        if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey || event.defaultPrevented) return;
+        // a word being composed: Tab is the keyboard's own (as in the field's keys)
+        if (event.isComposing || event.keyCode === 229) return;
+        // from wherever it is: a chip's menu closed by this Tab gave the focus back to its chip,
+        // one closed by Escape left it on the page under the screen
+        const all = tabbable();
+        if (!all.length) return;
+        const at = all.indexOf(document.activeElement as HTMLElement);
+        const next = at < 0 ? (event.shiftKey ? all.length - 1 : 0) : (at + (event.shiftKey ? -1 : 1) + all.length) % all.length;
+        event.preventDefault();
+        all[next].focus({ preventScroll: true });
+        // a tag far down the cloud comes into its view (the page under the screen is held still)
+        all[next].scrollIntoView({ block: "nearest", inline: "nearest" });
+      };
+      window.addEventListener("keydown", cycle);
       const view = window.visualViewport;
       const fit = () => {
+        const height = view?.height ?? window.innerHeight;
         box.style.setProperty("--view-top", `${view?.offsetTop ?? 0}px`);
-        box.style.setProperty("--view-height", `${view?.height ?? window.innerHeight}px`);
+        box.style.setProperty("--view-height", `${height}px`);
+        // too short for the bar, the zones and some tags (a phone on its side, the keyboard up):
+        // the bar keeps its place and the zones give way to the tags (styles.css)
+        box.toggleAttribute("data-short", height < SHORT_VIEW);
       };
       fit();
       view?.addEventListener("resize", fit);
       view?.addEventListener("scroll", fit);
       return () => {
         box.removeEventListener("focusin", keep);
+        window.removeEventListener("keydown", cycle);
         view?.removeEventListener("resize", fit);
         view?.removeEventListener("scroll", fit);
         box.style.removeProperty("--view-top");
         box.style.removeProperty("--view-height");
+        box.removeAttribute("data-short");
         body.cssText = was;
-        window.scrollTo({ top: y, behavior: "instant" });
+        // the query changed under the screen: the page goes to the start of the new results if it
+        // was past them (the change itself could not scroll the frozen page), as a new query does
+        // and opened from another page, the feed it went to opens at its results
+        const feed = untrack(route).page === "feed";
+        const changed = feed && untrack(currentQuery) !== from;
+        const top = feed && fromPage !== "feed" ? readingTop() : changed ? Math.min(y, readingTop()) : y;
+        window.scrollTo({ top, behavior: "instant" });
+        closeScreen();
       };
     },
   );
 
   // the text field is where the caret is and where new chips go: the row keeps it in view
+  let rowQuery = untrack(route).q;
   createEffect(
-    () => [route().q, caretAt(), draft(), focused()],
+    () => [route().q, caretAt(), draft(), focused(), editing()],
     () => {
       requestAnimationFrame(() => {
         if (!row || !input) return;
@@ -505,11 +776,25 @@ export default function SearchBox(props: { stuck: boolean }) {
           markEdges();
           return;
         }
-        const box = row.getBoundingClientRect();
-        const field = input.getBoundingClientRect();
-        if (field.right > box.right) row.scrollLeft += field.right - box.right + 8;
-        else if (field.left < box.left) row.scrollLeft -= box.left - field.left + 8;
-        markEdges();
+        const q = route().q;
+        const seen = q === rowQuery;
+        rowQuery = q;
+        if (!focused() && !editing()) {
+          // left: back to the first chip; not being worked on, the row stays where it is unless
+          // the query changed (a tag clicked on the page), and then it shows the end, where it did
+          if (rewind) {
+            // the text left in the field is still on its way into the query: its run rewinds too
+            rewind = currentQuery() !== q;
+            row.scrollLeft = 0;
+            markEdges();
+            return;
+          }
+          if (seen) {
+            markEdges();
+            return;
+          }
+        }
+        reveal(input);
       });
     },
     // a page opened on a query shows it from the start
@@ -577,25 +862,148 @@ export default function SearchBox(props: { stuck: boolean }) {
       return () => {
         window.removeEventListener("pointermove", track, true);
         cancelAnimationFrame(frame);
-        setInsertAt(undefined);
-        setJoinAt(undefined);
-        setUnarmed(undefined);
+        queueMicrotask(() => {
+          setInsertAt(undefined);
+          setJoinAt(undefined);
+          setUnarmed(undefined);
+        });
         near?.removeAttribute("data-near");
         markEdges();
       };
     },
   );
 
+  /**
+   * The dropdown ends inside the window: opened from the bar low on the page (the feed not yet
+   * scrolled), it is as tall as the room under the bar, scrolling its tags in there, so none of
+   * them stays out of reach below the window's edge. Opened with less room than that (a short
+   * window), the page first moves up to make some; left with too little later (the page scrolled
+   * back, the window made shorter), it opens upwards when there is more room over the bar.
+   */
+  const DROP_MIN = 240;
+  /** When the field last got the focus from away (not back from Clear, a chip or its menu). */
+  let enteredAt = 0;
+  /** The focus or a press went off the box and its menus: the field is entered anew next time. */
+  let away = true;
+  const fitDrop = (opening = false) => {
+    const drop = root?.querySelector<HTMLElement>(".search-drop");
+    if (!drop || !root || editing()) return;
+    const view = window.visualViewport?.height ?? window.innerHeight;
+    // the gap over the dropdown and a margin under it
+    const roomUnder = () => Math.floor(view - root!.getBoundingClientRect().bottom - 20);
+    // a header or a stuck bar stays where it is however the page scrolls; and only as the field
+    // is entered, not while it is worked in (a "-" closes the dropdown for a moment, the next
+    // letter or a Backspace opens it again)
+    if (opening && performance.now() - enteredAt < 500 && roomUnder() < DROP_MIN && !root.closest(".topnav, .bar.stuck")) {
+      window.scrollBy({ top: DROP_MIN - roomUnder(), behavior: "instant" });
+    }
+    const below = roomUnder();
+    // over the box: up to the header when it is in sight, and clear of the corner ribbon's band
+    // on a wide window (its "Tags page" link is at the right end of the dropdown's top line)
+    const box = root.getBoundingClientRect();
+    const nav = document.querySelector(".topnav")?.getBoundingClientRect();
+    const fromRight = window.innerWidth - box.right;
+    const ceiling = Math.max(0, nav && nav.height > 0 ? nav.bottom : 0, window.innerWidth > 1000 ? 230 - fromRight : 0);
+    const above = Math.floor(box.top - ceiling - 16);
+    // (only once it gets really short: the page scrolled a little back does not flip it)
+    const up = below < DROP_MIN * 0.66 && above > below;
+    drop.toggleAttribute("data-up", up);
+    drop.style.setProperty("--drop-room", `${Math.max(120, up ? above : below)}px`);
+  };
+  const refitDrop = () => fitDrop();
+
+  onSettled(() => {
+    window.addEventListener("scroll", refitDrop, { passive: true });
+    window.addEventListener("resize", refitDrop);
+    // the box moved to another page's header (App: oneSearch), which may not scroll at all
+    const moved = () =>
+      requestAnimationFrame(() => {
+        refitDrop();
+        // the focused piece of the box may have gone with the change (Clear with the query), and
+        // not every browser says so with a focusout: the cloud stays only for focus still in it
+        const at = document.activeElement;
+        // (nor for a tag of it just pressed with the focus nowhere: the cloud is in use)
+        if (within() && !holds(at) && !(!byKeys && holds(pressed ?? null)) && !at?.closest(".tag-menu")) setWithin(false);
+      });
+    window.addEventListener("hashchange", moved);
+    return () => {
+      window.removeEventListener("hashchange", moved);
+      window.removeEventListener("scroll", refitDrop);
+      window.removeEventListener("resize", refitDrop);
+    };
+  });
+
   onSettled(() => {
     const focusShortcut = (event: KeyboardEvent) => {
-      const typing = (event.target as HTMLElement).closest("input, textarea");
+      const typing = event.target instanceof Element && event.target.closest("input, textarea, [contenteditable]");
       const slash = event.key === "/" && !typing;
-      const commandK = event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey);
+      // by the key's place, so a Russian layout (л there) works too
+      const commandK = event.code === "KeyK" && (MAC ? event.metaKey : event.ctrlKey);
       if (!slash && !commandK) return;
       event.preventDefault();
       input?.focus();
     };
     window.addEventListener("keydown", focusShortcut);
+    // the search in use with the focus gone nowhere (a menu's press took it): Escape is the box's
+    // all the same (a menu open takes it first)
+    const escapeNowhere = (event: KeyboardEvent) => {
+      const at = document.activeElement;
+      if (event.key !== "Escape" || event.defaultPrevented || (at && at !== document.body)) return;
+      if (!within() && !editing()) return;
+      away = true;
+      setWithin(false);
+      if (editing()) stopEditing();
+    };
+    window.addEventListener("keydown", escapeNowhere);
+    const press = (event: PointerEvent) => {
+      // a press anywhere but on a suggestion or the menu it opened: what one was pressed for is
+      // over (dragged off and let go, its menu left), so a change of the query after it is not its
+      if (!(event.target as Element).closest?.(".suggestions li, .tag-menu")) fromList = undefined;
+      dragFrom = currentQuery();
+      pressedInBox = !!root?.contains(event.target as Node);
+      const inMenu = !!(event.target as Element).closest?.(".tag-menu");
+      if (!pressedInBox && !inMenu) away = true;
+      // the cloud held open with the focus nowhere (a menu of it closed, a press in it): a press
+      // anywhere but in it (or a menu) puts it away, as it would with the focus in it (Safari
+      // focuses no chip it presses, to say so)
+      if (within() && !inMenu && !holds(event.target as Element) && !root?.contains(document.activeElement)) setWithin(false);
+      // a press in the cloud (or Clear), which keeps the focus where it is: from another piece of
+      // the box (Clear, a tag Tabbed to), or from nowhere with the cloud held, it goes to the field,
+      // as a press there with the focus in the field leaves it: the piece may go with the change
+      const at = document.activeElement;
+      const fromPiece = !!at && at !== input && !!root?.contains(at);
+      const cloudOpen = !!root?.querySelector(".search-drop");
+      if (event.button === 0 && cloudOpen && holds(event.target as Element) && (fromPiece || (within() && !root?.contains(at)))) input?.focus({ preventScroll: true });
+      pressed = event.target instanceof Element ? event.target : undefined;
+    };
+    window.addEventListener("pointerdown", press, true);
+    // Back or Forward is not the suggestion's doing either (and comes before the query it brings)
+    // (popstate comes with the page's own changes of the address too, and with a link followed:
+    // only an entry seen before, landed on again, is a step; route.ts marks each one it sees)
+    const stepped = () => {
+      if (!changingHere() && (history.state as { seen?: true } | null)?.seen) fromList = undefined;
+    };
+    window.addEventListener("popstate", stepped, true);
+    // a focused element taken off the page blurs in the middle of an update: the note waits for its end
+    const note = (on: boolean) => on !== within() && queueMicrotask(() => setWithin(on));
+    // (the box moving to another page's header blurs and refocuses what had the focus: no change)
+    const onFocusIn = (event: FocusEvent) => {
+      if (moving) return;
+      const to = event.target as Element;
+      if (!root?.contains(to) && !to.closest?.(".tag-menu")) away = true;
+      // into a menu: as it was (held only when opened from the cloud)
+      if (to.closest?.(".tag-menu")) return;
+      note(holds(to));
+    };
+    // (nor a press in a menu, which Safari answers with a focus gone nowhere: the field's blur saw to it)
+    const onFocusOut = (event: FocusEvent) =>
+      !moving && !event.relatedTarget && !(event.target as Element).closest?.(".tag-menu") && !(!byKeys && pressed?.closest(".tag-menu")) && note(false);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    // chips come and go, the zones take room, the window turns: the fades and arrows follow
+    // a frame later: the arrows it shows change the row's size, which the observer would see in its own loop
+    const resized = new ResizeObserver(() => requestAnimationFrame(markEdges));
+    if (row) resized.observe(row);
     // let go off the box, a carried chip leaves the query; on a place, it goes there
     // the copy then lands on the chip the drop made, goes home when nothing changed, or fades when the chip left
     const stop = onDrop(
@@ -621,9 +1029,37 @@ export default function SearchBox(props: { stuck: boolean }) {
     );
     return () => {
       window.removeEventListener("keydown", focusShortcut);
+      window.removeEventListener("keydown", escapeNowhere);
+      window.removeEventListener("pointerdown", press, true);
+      window.removeEventListener("popstate", stepped, true);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("focusout", onFocusOut);
+      resized.disconnect();
       stop();
     };
   });
+
+  /**
+   * Over an end of the row, for a mouse: a page of chips that way. It shows on hover, and only
+   * on a side with chips past it (styles.css); a finger swipes the row instead. Pressing it keeps
+   * the focus where it was, and the click stays off the box, which would move the caret.
+   */
+  const RowArrow = (arrow: { way: -1 | 1 }) => (
+    <button
+      type="button"
+      class={{ "row-arrow": true, left: arrow.way < 0, right: arrow.way > 0 }}
+      tabindex="-1"
+      aria-label={arrow.way < 0 ? t().scrollChips.left : t().scrollChips.right}
+      title={arrow.way < 0 ? t().scrollChips.left : t().scrollChips.right}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.stopPropagation();
+        page(arrow.way);
+      }}
+    >
+      <Icon name="chevron" />
+    </button>
+  );
 
   const TermChip = (chip: { term: Term; clause: number; index: number }) => (
     <button
@@ -639,8 +1075,11 @@ export default function SearchBox(props: { stuck: boolean }) {
       data-flip={flipKey(chip.term)}
       // let go on its own trace, a chip stays where it was
       data-drop={isCarried(chip.clause, chip.index) ? "stay" : undefined}
-      onClick={(event) => chipMenu(event, chip.term.raw)}
-      onContextMenu={(event) => openTagMenu(event, chip.term.raw)}
+      // an "and" group has no menu of its own (its text is no tag): its parts have theirs, and Tab
+      // goes to them instead of to the group
+      tabindex={chip.term.all ? -1 : undefined}
+      onClick={(event) => !chip.term.all && chipMenu(event, chip.term.raw)}
+      onContextMenu={(event) => (chip.term.all ? event.preventDefault() : openTagMenu(event, chip.term.raw))}
     >
       {/* an AND inside an OR: its parts in brackets, each its own chip to drag out */}
       <Show when={chip.term.all} fallback={<TagLabel tag={chip.term.raw} />}>
@@ -687,6 +1126,21 @@ export default function SearchBox(props: { stuck: boolean }) {
           event.stopPropagation();
           openTagMenu(event, chip.part.raw);
         }}
+        // reached with Tab like any chip, Enter or Space opens its menu
+        tabindex="0"
+        role="button"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (PHONE.matches && !editing()) {
+            input?.focus();
+            return;
+          }
+          const el = event.currentTarget as HTMLElement;
+          const box = el.getBoundingClientRect();
+          openAt(el, chip.part.raw, box.left, box.bottom, true);
+        }}
         class={{ part: true, neg: chip.part.neg, carried: isCarriedPart(chip.clause, chip.term, chip.index) }}
         data-ns={namespaceKey(chip.part.raw)}
         data-flip={flipKey(chip.part)}
@@ -710,6 +1164,7 @@ export default function SearchBox(props: { stuck: boolean }) {
     return (
       <li
         role="option"
+        id={`search-option-${row.index}`}
         aria-selected={row.index === active() ? "true" : "false"}
         class={{ active: row.index === active(), used: uses(route().q, row.tag), excluded: excludesTag(route().q, row.tag) }}
         data-ns={namespaceKey(row.tag)}
@@ -720,7 +1175,10 @@ export default function SearchBox(props: { stuck: boolean }) {
         onContextMenu={(event) => row.count >= 0 && openTagMenu(event, row.tag)}
         // the field keeps the focus; the pick is the click, so a press can become a drag
         onMouseDown={(event) => event.preventDefault()}
-        onClick={() => pick(row.tag)}
+        onClick={() => {
+          pick(row.tag, true);
+          input?.focus();
+        }}
       >
         {/* the text option reads as an action, not as one more tag */}
         <Show
@@ -742,7 +1200,18 @@ export default function SearchBox(props: { stuck: boolean }) {
   };
 
   return (
-    <div class={{ search: true, focused: focused(), editing: editing(), dragging: !!dragged(), outside: over() === "outside" }} ref={(el) => (root = el)}>
+    <div
+      class={{ search: true, focused: focused(), editing: editing(), dragging: !!dragged(), outside: over() === "outside" }}
+      ref={(el) => (root = el)}
+      // Escape on Clear or in the cloud closes it too, as it does in the field
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.target === input || event.defaultPrevented) return;
+        away = true;
+        setWithin(false);
+        if (editing()) stopEditing();
+        else (event.target as HTMLElement).blur();
+      }}
+    >
       <div
         class={{ "search-field": true, over: over() === "field" }}
         onPointerDown={() => {
@@ -757,9 +1226,16 @@ export default function SearchBox(props: { stuck: boolean }) {
       >
         {/* flex order keeps the one text field where the caret is, between chips, without remounting it */}
         <Icon name="search" class="search-icon" />
+        <RowArrow way={-1} />
         {/* chips and the text field in one row of their own that scrolls sideways, so the box
             stays one line and the drop zones keep the right side */}
-        <span class="chips" ref={(el) => (row = el)} onScroll={markEdges}>
+        <span
+          class="chips"
+          ref={(el) => (row = el)}
+          onScroll={markEdges}
+          // a chip reached with Tab stands clear of the end (a focus scroll leaves it at the edge)
+          onFocusIn={(event) => (event.target as HTMLElement).matches(".chip:focus-visible, .part:focus-visible") && reveal(event.target as HTMLElement)}
+        >
           <For each={clauses()}>
             {(clause: Clause, index) => (
               <>
@@ -772,6 +1248,18 @@ export default function SearchBox(props: { stuck: boolean }) {
                       style={{ order: 2 * index() + 2 }}
                       data-flip={`raw:${(clause as { raw: string }).raw.toLowerCase()}`}
                       data-drop={isCarried(index(), -1) ? "stay" : undefined}
+                      // a query too nested for chips has no menu: a click takes it back into the field to edit
+                      onClick={() => {
+                        const raw = (clause as { raw: string }).raw;
+                        // the text still in the field goes in first, which can move the chip
+                        commit(draft());
+                        const at = toClauses(currentQuery()).findIndex((each) => "raw" in each && each.raw === raw);
+                        if (at < 0) return;
+                        removeAt(at);
+                        setCaret(at >= toClauses(currentQuery()).length ? undefined : at);
+                        setDraft(raw);
+                        input?.focus();
+                      }}
                     >
                       {(clause as { raw: string }).raw}
                     </button>
@@ -842,28 +1330,57 @@ export default function SearchBox(props: { stuck: boolean }) {
             placeholder={clauses().length ? "" : t().searchPlaceholder}
             value={draft()}
             autocomplete="off"
+            autocapitalize="none"
+            autocorrect="off"
+            enterkeyhint="search"
             spellcheck={false}
             aria-label={t().searchPlaceholder}
-            onInput={(event) => onInput(event.currentTarget.value)}
+            // a combobox to a screen reader: the suggestions are its list, the arrows move in it
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="search-suggestions"
+            aria-expanded={options().length > 0 ? "true" : "false"}
+            aria-activedescendant={options().length > 0 ? `search-option-${Math.min(active(), options().length - 1)}` : undefined}
+            onInput={onInput}
             onFocus={() => {
+              if (moving) return;
+              if (away) enteredAt = performance.now();
+              away = false;
+              rewind = false;
               setFocused(true);
               startEditing();
             }}
             onBlur={(event) => {
+              if (moving) return;
               // editing on a phone, a tag or chip pressed on the screen takes the focus (a long
-              // press focuses a link): the field takes it back, keeping the keyboard and the text
-              const to = event.relatedTarget as HTMLElement | null;
-              if (editing() && to && root?.contains(to) && grabs(to)) {
+              // press focuses a link), and so does a button of a chip's menu: the field takes it
+              // back, keeping the keyboard and the text
+              // (Safari gives no relatedTarget for a pressed button: the press tells it then)
+              // (the press can be on an icon in a button: an svg, not an HTMLElement)
+              const to = ((event.relatedTarget as Element | null) ?? (!byKeys && pressed && (pressedInBox || pressed.closest(".tag-menu")) ? pressed : null)) as HTMLElement | null;
+              // to a chip, Clear or a chip's menu: still at work in the search; anything else is away
+              away = !to || !(root?.contains(to) || to.closest(".tag-menu"));
+              // (not a Tab or a menu's arrows: the keys go where they lead)
+              if (editing() && !leaving && !byKeys && to && ((root?.contains(to) && grabs(to)) || to.closest(".tag-menu"))) {
                 input?.focus({ preventScroll: true });
                 return;
               }
+              // Tab into the cloud: it stays for the focus to land in (the note on focusin comes late)
+              // (and so does the arrow into the menu of a tag of the cloud, opened with a press)
+              if ((holds(to) || (to?.closest(".tag-menu") && holds(menuTrigger()))) && !leaving) setWithin(true);
+              const inBox = to ? !!root?.contains(to) : pressedInBox;
+              if (!editing() && !inBox) rewind = true;
               setCaret(undefined);
               setFocused(false);
-              commit(draft());
+              // a chip pressed for its menu, or Clear: the text waits in the field, so the menu
+              // is not closed by a new query, and Clear is one step back, not two
+              const on = to ?? (pressedInBox ? pressed : undefined);
+              if (!on?.closest(".chip, .part, .search-clear, .tag-menu")) commit(draft());
             }}
             onKeyDown={onKeyDown}
           />
         </span>
+        <RowArrow way={1} />
         {/* while something is dragged, the whole box adds it (after the chips, a hint says so); two
             zones of their own, always the same size in the same place, negate it or keep only it */}
         {/* on a phone's editing screen they stay docked over the keyboard, faded until a drag, so
@@ -891,21 +1408,27 @@ export default function SearchBox(props: { stuck: boolean }) {
           </span>
         </Show>
         {/* on a phone's editing screen it stays put while dragging, so the bar does not move */}
-        <Show when={route().q && (!dragged() || editing())}>
+        <Show when={(route().q || draft()) && (!dragged() || editing())}>
           <button
             class="search-clear"
             aria-label={t().clear}
             title={t().clear}
+            // the field keeps the focus through the press (it gets it after anyway): nothing it
+            // shows closes and opens again on the way
+            onMouseDown={(event) => event.preventDefault()}
             onClick={(event) => {
               event.stopPropagation();
-              setQuery("");
+              setDraft("");
+              if (currentQuery()) setQuery("");
+              // the button goes with the query: the field takes the focus, ready for a new one
+              input?.focus();
             }}
           >
             <Icon name="close" />
           </button>
         </Show>
-        <Show when={!route().q && !dragged()}>
-          <kbd class="search-kbd">⌘K</kbd>
+        <Show when={!route().q && !draft() && !dragged()}>
+          <kbd class="search-kbd">{MAC ? "⌘K" : "Ctrl K"}</kbd>
         </Show>
       </div>
 
@@ -918,7 +1441,21 @@ export default function SearchBox(props: { stuck: boolean }) {
 
       <Show when={options().length > 0 || showCloud()}>
         {/* mousedown keeps focus in the input, so its blur doesn't close the dropdown first */}
-        <div class="search-drop" onMouseDown={(event) => event.preventDefault()}>
+        <div
+          class="search-drop"
+          ref={() => requestAnimationFrame(() => fitDrop(true))}
+          onMouseDown={(event) => event.preventDefault()}
+          // "Tags page" leaves the search: the page it opens is to read, not under the dropdown
+          onClick={(event) => {
+            if (!(event.target as Element).closest(".cloud-more")) return;
+            if (editing()) stopEditing();
+            else input?.blur();
+            // after the blur, which took the press on the link for one inside the box (and kept
+            // the cloud for it: on the Tags page itself no page change closes it after)
+            setWithin(false);
+            away = true;
+          }}
+        >
           {/* the query read out, quietly, where it is being worked on: only when the chips
               alone take some reading (groups, a minus, more than one); not on a phone's
               editing screen, where the room is for the tags */}
@@ -930,7 +1467,7 @@ export default function SearchBox(props: { stuck: boolean }) {
             )}
           </Show>
           <Show when={options().length > 0} fallback={<TagCloud />}>
-            <ul class="suggestions" role="listbox">
+            <ul class="suggestions" role="listbox" id="search-suggestions">
               <For each={options()}>{([tag, count], index) => <Suggestion tag={tag} count={count} index={index()} />}</For>
             </ul>
           </Show>

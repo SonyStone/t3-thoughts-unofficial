@@ -32,8 +32,9 @@ type Bar = { label: JSX.Element; value: number; shown?: string; title?: string }
 /** Horizontal bars from one baseline, one hue; the value sits at the tip in text color. */
 function Bars(props: { rows: Bar[]; stacked?: boolean }) {
   const max = () => Math.max(...props.rows.map((row) => row.value), 1);
+  const valueWidth = () => Math.max(1, ...props.rows.map((row) => String(row.shown ?? row.value).length));
   return (
-    <div class={{ bars: true, stacked: !!props.stacked }}>
+    <div class={{ bars: true, stacked: !!props.stacked }} style={{ "--value-width": `${valueWidth()}ch` }}>
       <For each={props.rows}>
         {(row) => (
           <div class="bar-row" title={row.title}>

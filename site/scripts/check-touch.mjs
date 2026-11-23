@@ -1,6 +1,8 @@
 // Finger drags on a phone (390px, touch events through CDP, as Chrome's device mode sends them),
 // printing the query and the scroll after each: node scripts/check-touch.mjs (dev server on :5173)
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
 const page = await ctx.newPage();
@@ -11,14 +13,16 @@ const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touch
 const base = "workflow || model:claude";
 const open = async () => {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(base));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent(base));
   await page.waitForTimeout(400);
+  // the tags on the page are on the cards, under the search: in sight with it
+  await page.evaluate(() => window.scrollTo(0, 260));
+  await page.waitForTimeout(150);
 };
 const read = () =>
   page.evaluate(() => ({
     q: new URLSearchParams(location.hash.split("?")[1] ?? "").get("q"),
     scrollY: Math.round(scrollY),
-    row: Math.round(document.querySelector(".hero-cloud .cloud-tags")?.scrollLeft ?? 0),
     menu: !!document.querySelector('[role="menu"]'),
     left: document.querySelectorAll("[data-held], [data-drag-source], .drag-ghost").length,
   }));
@@ -40,34 +44,24 @@ async function drag(name, from, to, holdMs = 0) {
   await page.waitForTimeout(700);
   console.log(name.padEnd(30), "dragging:", !!dragging, "->", JSON.stringify(await read()));
 }
-const tag = (t) => () => page.locator(".hero-cloud .tag", { hasText: t }).first();
+const tag = (t) => () => page.locator(".tiles .tag", { hasText: t }).first();
 const chip = (t) => () => page.locator(".search .chip", { hasText: t }).first();
 const zone = (t) => () => center(page.locator(".drop-zone", { hasText: t }));
 await drag("chip workflow hold -> Without", chip("workflow"), zone("Without"), 600);
 await drag("chip workflow hold -> out", chip("workflow"), async () => ({ x: 200, y: 800 }), 600);
-await drag("tag swipe up (page scrolls)", tag("kind:post"), null);
+await drag("tag swipe up (page scrolls)", tag("product:t3-code"), null);
 // on a phone the chips' line is where adding happens: past the last chip
-await drag("tag hold -> after chips", tag("kind:post"), async () => {
+await drag("tag hold -> after chips", tag("product:t3-code"), async () => {
   const b = await page.locator(".search .chips > .clause").last().boundingBox();
   return { x: Math.min(b.x + b.width + 30, 370), y: b.y + b.height / 2 };
 }, 600);
-await drag("tag hold -> Without", tag("kind:post"), zone("Without"), 600);
-await drag("tag hold -> or on group", tag("kind:post"), () => center(page.locator(".search .chips > .clause").first()), 600);
-await drag("tag hold -> and over claude", tag("kind:post"), () => center(page.locator(".and-tab").nth(1)), 600);
-// a swipe along a tag row scrolls the row
-{
-  await open();
-  const s = await center(tag("agents")());
-  await touch("touchStart", s.x, s.y);
-  for (let i = 1; i <= 10; i++) { await touch("touchMove", s.x - i * 20, s.y); await page.waitForTimeout(16); }
-  await touch("touchEnd");
-  await page.waitForTimeout(400);
-  console.log("tag row swipe left".padEnd(30), "->", JSON.stringify(await read()));
-}
+await drag("tag hold -> Without", tag("product:t3-code"), zone("Without"), 600);
+await drag("tag hold -> or on group", tag("product:t3-code"), () => center(page.locator(".search .chips > .clause").first()), 600);
+await drag("tag hold -> and over claude", tag("product:t3-code"), () => center(page.locator(".and-tab").nth(1)), 600);
 // a swipe along the chips scrolls their one row, nothing is dragged
 {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent("date:2026-10-29 weight:>=1 sort:views agents product:t3-code open-source harness business ui"));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent("date:2026-10-29 weight:>=1 sort:views agents product:t3-code open-source harness business ui"));
   await page.waitForTimeout(400);
   const before = await page.evaluate(() => document.querySelector(".chips").scrollLeft);
   const s = await center(chip("weight")());
@@ -81,7 +75,7 @@ await drag("tag hold -> and over claude", tag("kind:post"), () => center(page.lo
 // a hold let go in place opens the tag menu, and the tag does not also search
 {
   await open();
-  const s = await center(tag("kind:post")());
+  const s = await center(tag("product:t3-code")());
   await touch("touchStart", s.x, s.y);
   await page.waitForTimeout(600);
   await touch("touchEnd");

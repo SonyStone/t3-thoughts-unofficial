@@ -2,6 +2,8 @@
 // frozen, keeps the focus while tags are picked up, docks the zones at the bottom, and Done puts
 // the page back where it was: node scripts/check-edit.mjs (dev server on :5173)
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
 const page = await ctx.newPage();
@@ -20,7 +22,7 @@ const state = () =>
 
 async function edit() {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent("product:t3-code agents"));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent("product:t3-code agents"));
   await page.waitForTimeout(800);
   await page.evaluate(() => window.scrollTo(0, 200));
   await page.waitForTimeout(150);

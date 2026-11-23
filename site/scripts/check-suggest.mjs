@@ -3,6 +3,8 @@
 // tap takes it out; on a phone (touch through CDP) and with the mouse: node scripts/check-suggest.mjs
 // (dev server on :5173)
 import { chromium } from "playwright-core";
+// the dev server: SITE=http://localhost:5174 node scripts/... for another one
+const SITE = process.env.SITE ?? "http://localhost:5173";
 const browser = await chromium.launch();
 const errors = [];
 // phone
@@ -15,7 +17,7 @@ const q = (p = page) => p.evaluate(() => new URLSearchParams(location.hash.split
 const st = (p = page) => p.evaluate(() => ({ draft: document.querySelector(".search-field input").value, active: document.activeElement.tagName, editing: !!document.querySelector(".search.editing"), menu: !!document.querySelector(".tag-menu"), rows: [...document.querySelectorAll(".suggestions li")].map((li) => li.querySelector("span").textContent + (li.classList.contains("used") ? "*" : "") + (li.classList.contains("excluded") ? "-" : "")).slice(0, 4).join(",") }));
 async function open(query, typed) {
   await page.goto("about:blank");
-  await page.goto("http://localhost:5173/#/?q=" + encodeURIComponent(query));
+  await page.goto(SITE + "/#/?q=" + encodeURIComponent(query));
   await page.waitForTimeout(700);
   const f = await page.locator(".search-field").boundingBox();
   await page.touchscreen.tap(f.x + 18, f.y + f.height / 2);
@@ -82,7 +84,7 @@ const d = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 d.on("pageerror", (e) => errors.push(e.message));
 for (const [label, dest] of [["click", null], ["drag -> Only", "Only"], ["drag -> Without", "Without"]]) {
   await d.goto("about:blank");
-  await d.goto("http://localhost:5173/#/?q=" + encodeURIComponent("product:t3-code agents"));
+  await d.goto(SITE + "/#/?q=" + encodeURIComponent("product:t3-code agents"));
   await d.waitForTimeout(700);
   await d.locator(".search-field").first().click({ position: { x: 30, y: 30 } });
   await d.keyboard.type("op");
