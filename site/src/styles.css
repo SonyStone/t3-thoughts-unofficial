@@ -100,7 +100,8 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 18px max(24px, calc((100vw - 1180px) / 2));
+  /* (100%, not 100vw: a window's scrollbar is not part of the page, and the column is centred without it) */
+  padding: 18px max(24px, calc((100% - 1180px) / 2));
 }
 
 .topnav.solid {
@@ -337,6 +338,7 @@ a {
 
 .hero-text {
   position: absolute;
+  /* placed by the video's frame, next to Theo in the middle of it, not by the page's column */
   left: 6%;
   /* where it stood over the page part of the frame: 66% of 5/12 of the width */
   top: 27.5cqw;
@@ -608,7 +610,7 @@ main {
   align-items: center;
   gap: 12px;
   margin-top: -47px;
-  padding: 12px max(24px, calc((100vw - 1180px) / 2));
+  padding: 12px max(24px, calc((100% - 1180px) / 2));
   border-bottom: 1px solid transparent;
 }
 
@@ -3469,23 +3471,22 @@ footer {
   font-variant-numeric: tabular-nums;
 }
 
+/* below 1000px the same band across the corner, smaller, and it scrolls away with the header */
 @media (max-width: 1000px) {
   .ribbon-box {
-    position: relative;
-    width: 100%;
-    height: 18px;
+    position: absolute;
+    width: 120px;
+    height: 120px;
   }
 
   .ribbon {
-    inset: 0 0 auto auto;
-    width: auto;
-    padding: 2px 10px;
-    transform: none;
-    font-size: 0.62rem;
-  }
-
-  .topnav:not(.solid) {
-    top: 18px;
+    top: 24px;
+    right: -40px;
+    width: 170px;
+    padding: 4px 0;
+    box-shadow: 0 0 14px rgba(232, 38, 43, 0.5);
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
   }
 
   .row {
@@ -3577,9 +3578,9 @@ footer {
 
   .hero-text {
     top: auto;
-    right: 16px;
+    right: 12px;
     bottom: 31%;
-    left: 16px;
+    left: 12px;
   }
 
   .hero h1 {
@@ -3612,7 +3613,7 @@ footer {
   }
 
   .hero p {
-    margin: 8px 0 0 2px;
+    margin: 8px 0 0;
     font-size: 0.92rem;
   }
 
