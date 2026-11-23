@@ -127,7 +127,7 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     duration: meta.duration,
     weight: Number(meta.weight ?? 2),
     ...resolveTags(meta.tags ?? [], people, file),
-    // a repost has no text of its own (playbooks/scout.md); the original lives in `quoted`
+    // a repost has no text of its own; the original lives in `quoted`
     text: meta.kind === "repost" ? undefined : meta.text?.trimEnd() || undefined,
     media: meta.media ?? [],
     parent,
@@ -268,7 +268,7 @@ function readAll(root: string, previewDirs: string[]) {
  * into the build as `content-files/<path from the repo root>`.
  *
  * `preview` folders (from T3_PREVIEW, comma-separated, relative to the repo root) add
- * trial files, e.g. `T3_PREVIEW=research/video-trial pnpm dev`.
+ * trial files kept outside content/, e.g. `T3_PREVIEW=drafts/trial pnpm dev`.
  */
 export default function content(repoRoot: string, preview: string[] = []): Plugin {
   const root = resolve(repoRoot);

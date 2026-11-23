@@ -1,12 +1,12 @@
-# Словарь тегов T3 Thoughts.
-# Читают двое: Opus ставит теги по нему (playbooks/posts.md, playbooks/video.md),
-# сайт берёт отсюда описания, синонимы и следствия (site/content-plugin.ts).
+# The T3 Thoughts tag vocabulary.
+# Two readers: Opus tags the entries by it, and the site takes descriptions,
+# aliases and implications from it (site/content-plugin.ts).
 #
-# Описания: { en: ..., ru: ... }, английский основной. Новому тегу хватит en, ru допишется потом.
+# Descriptions: { en: ..., ru: ... }, English first. A new tag needs only en; ru can come later.
 #
-# Тег — строка в нижнем регистре через дефис, с пространством имён или без:
+# A tag is a lowercase, hyphenated string, with a namespace or without:
 #   product:t3-code, model:opus-5.5, mood:salty, agents
-# Без пространства имён — тема.
+# Without a namespace it is a topic.
 
 namespaces:
   product: { en: "a product or service (his own or someone else's) — t3-code, t3-chat, codex, cursor", ru: "продукт или сервис (свой или чужой) — t3-code, t3-chat, codex, cursor" }
@@ -17,11 +17,11 @@ namespaces:
   mood: { en: "Theo's own tone in the post, exactly one per entry", ru: "тон самого Theo в посте, ровно один на запись" }
   format: { en: "what kind of entry this is, one or two per entry", ru: "что это за запись по сути, один-два на запись" }
 
-# Разрешённые значения для закрытых пространств имён.
+# The allowed values of the closed namespaces.
 mood: [hype, salty, joking, tired, serious, curious, proud, annoyed]
 format: [how-to, take, news, announcement, answer, prediction, opinion-change, behind-the-scenes]
 
-# Известные теги и что они значат. Новый тег можно добавить, если ни один не подходит.
+# Known tags and what they mean. A new tag may be added when none fits.
 tags:
   product:t3-code: { en: "T3 Code, Theo's coding agent orchestrator", ru: "T3 Code, кодинг-агент-оркестратор Theo" }
   product:t3-chat: { en: "T3 Chat, a chat app across many models", ru: "T3 Chat, чат с разными моделями" }
@@ -70,7 +70,7 @@ tags:
   prompts-vs-features: { en: "no feature needed, just tell the agent", ru: "отдельная фича не нужна, хватит сказать агенту" }
   competition: { en: "comparison with competitors and other ADEs", ru: "сравнение с конкурентами и другими ADE" }
 
-# Старое имя → каноническое. Сайт заменяет при чтении, Opus сразу пишет каноническое.
+# Old name → canonical one. The site replaces it on reading; Opus writes the canonical one.
 aliases:
   t3-code: product:t3-code
   t3-chat: product:t3-chat
@@ -89,7 +89,7 @@ aliases:
   boat: product:boat
   terminal: tech:terminal
 
-# Тег → что он добавляет сам. Применяется по цепочке: opus-5.5 → opus → claude → anthropic.
+# Tag → the tags it brings along, applied down the chain: opus-5.5 → opus → claude → anthropic.
 implies:
   model:opus-5.5: [model:opus]
   model:opus: [model:claude]
@@ -101,5 +101,5 @@ implies:
   subagents: [agents]
   orchestration: [agents]
 
-# Теги, которые дублируют поля записи (kind), сайт их отбрасывает.
+# Tags that repeat an entry's fields (kind); the site drops them.
 drop: [repost, video]

@@ -6,3 +6,13 @@ assets/avatar-source/*.mkv
 .DS_Store
 assets/header/drafts/
 review/
+
+# kept on this machine only: the agents' playbooks, their run state, research notes and reference images
+# (state/skipped stays: the Stats page reads the skip reasons)
+playbooks/
+research/
+state/*
+!state/skipped/
+assets/avatar-source/
+assets/ribbon-reference.png
+assets/test-post-screenshot.png

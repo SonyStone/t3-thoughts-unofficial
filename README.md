@@ -1,64 +1,33 @@
 # T3 Thoughts (unofficial)
 
-Неофициальный дайджест Theo Browne (@theo на X, YouTube @t3dotgg): полезные посты и разборы видео без шитпоста. Тексты пишет модель. С Theo Browne и T3 Tools проект не связан.
+An unofficial digest of Theo Browne (@theo on X, @t3dotgg on YouTube): his useful posts and breakdowns of his videos, without the shitposting. The texts are written by a model. The project has no connection to Theo Browne or T3 Tools.
 
-## Как работает
+## What is here
 
-```
-расписание T3 Code (новый тред на прогон)
-  └─ Grok 4.7 выполняет playbooks/scout.md
-       ├─ X: посты @theo с прошлого прогона, родители ответов
-       ├─ YouTube: новые видео
-       ├─ отбор, отброшенное → state/skipped/<дата>.jsonl
-       ├─ Opus: playbooks/posts.md (все посты разом), playbooks/video.md (по видео)
-       └─ state/seen.json
-результат: content/<дата>/*.md → сайт (site/, SolidJS 2)
-```
-
-Логика живёт в `playbooks/*.md`, а не в коде. Чтобы изменить отбор или формат, правь текст плейбука.
-
-| Путь | Что там |
+| Path | What it holds |
 |---|---|
-| `playbooks/` | инструкции для агентов; `examples/` — образец разбора видео |
-| `state/seen.json` | что уже обработано, время прошлого прогона |
-| `state/inbox/` | входные данные для разбора постов |
-| `state/skipped/` | отброшенные посты с причиной, материал для правки критериев |
-| `content/` | готовые разборы, источник данных сайта |
-| `tags.yaml` | словарь тегов: по нему Opus ставит теги, сайт берёт синонимы и следствия |
-| `research/` | исследования при запуске проекта |
-| `assets/` | картинки, исходник клипа для шапки (видео в git не хранится) |
+| `content/<date>/<id>.md` | One post or video breakdown: frontmatter with the source and its tags, then the text in English. |
+| `content/<date>/<id>.ru.md` | Its Russian translation: `title` in the frontmatter and the same text. |
+| `tags.yaml` | The tag vocabulary: namespaces, known tags with descriptions, aliases and implications. |
+| `state/skipped/` | Posts the scout passed over, with the reason; the Stats page counts the reasons. |
+| `assets/` | Theo's avatar and the header video, its posters and the credits' logos. |
+| `site/` | The site, in SolidJS 2 and Vite. |
 
-## Сайт
+The content is written by agents on a schedule: a scout collects new posts and videos, picks the useful ones and hands them to Claude Opus for the breakdowns. Their instructions and run state live outside this repository.
+
+## Site
 
 ```sh
-cd site && pnpm install && pnpm dev     # локально, http://localhost:5173
-pnpm build                               # статика в site/dist
+cd site && pnpm install && pnpm dev     # http://localhost:5173
+pnpm build                               # static files in site/dist
 ```
 
-Сайт читает при сборке `content/`, `tags.yaml` и причины из `state/skipped/` (для статистики, тексты отброшенных постов на сайт не попадают). После прогона разведчика пересобери (`pnpm dev` подхватывает сам).
+At build time the site reads `content/`, `tags.yaml` and the reasons in `state/skipped/` (the texts of skipped posts are not published). `pnpm dev` picks up new content by itself.
 
-## Ручной прогон
+The pages are the feed with search over tags and text (`#/?q=…`), a post (`#/post/<id>`), all tags (`#/tags`) and statistics (`#/stats`), in English and Russian.
 
-Новый тред в этом проекте на Grok 4.7: «Выполни playbooks/scout.md».
+`site/scripts/check-*.mjs` drive the site in a headless browser (Playwright) and print what they see; run them against a dev server, e.g. `SITE=http://localhost:5173 node scripts/check-drag.mjs`.
 
-## Улучшение отбора
+## Deploy
 
-Раз в неделю просматривай `state/skipped/` и `content/`. Нашёл пропущенное полезное или мусор в разборах — поправь критерии в разделе «Отбор» в `playbooks/scout.md` и прогони заново на тех же постах.
-
-## Перенос на другую машину
-
-Нужно на новой машине: T3 Code с провайдерами Grok и Claude, `git`, `yt-dlp`, `ffmpeg`, `node` и `pnpm`.
-
-1. Перенеси репозиторий (`git clone` или копия папки). `assets/avatar-source/` в git не хранится, её нужно скопировать отдельно.
-2. На старой машине выключи расписание (в T3 Code или попроси агента: «выключи scheduled task T3 Thoughts»). Иначе оба компьютера будут писать в один `state/`.
-3. В T3 Code на новой машине открой проект и отправь этот промпт:
-
-```text
-Это проект T3 Thoughts (unofficial), его только что перенесли на эту машину. Прочитай README.md.
-1. Проверь, что есть yt-dlp, ffmpeg, node, pnpm; чего нет — скажи, как поставить, и остановись.
-2. Проверь через orchestrator_capabilities, что доступны провайдеры grok (grok-4.7) и claudeAgent (claude-opus-5-5).
-3. Если проект не зарегистрирован в T3 Code, зарегистрируй эту папку как проект "T3 Thoughts (unofficial)".
-4. Создай scheduled task: каждый день в 09:00, новый тред на каждый прогон, промпт
-   "Запусти через delegate_task на grok-4.7 задачу: выполни <абсолютный путь>/playbooks/scout.md. Дождись и перескажи итог."
-5. Сделай один ручной прогон через run_scheduled_task_now и покажи итог.
-```
+`.github/workflows/pages.yml` builds the site and publishes it to GitHub Pages on every push to `main`.
