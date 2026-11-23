@@ -1,5 +1,5 @@
 import { route, withQuery } from "./route";
-import { createMemo, For } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { entries, type Kind } from "./content";
 import { t } from "./i18n";
 import { CLOUD_SORTS, cloudSort, setCloudSort, type CloudSort } from "./prefs";
@@ -59,9 +59,14 @@ const quick: { key: "sortBy" | "rating" | "day"; tags: [string, number | undefin
   { key: "day", tags: days.slice(0, 5).map((day) => [`date:${day}`, search(`date:${day}`).length]) },
 ];
 
+/** The long rows show their first tags, and a button for the rest. */
+const SHOWN: Record<string, number> = { popular: 16, people: 12 };
+
 /**
  * Tags to start a search from, all of them, in the search's dropdown (on a phone, its editing
  * screen): there is no cloud on the page itself, the posts come right after the search.
+ * Topics and people are cut short until asked for, so the short rows (type, order, rating, day,
+ * mood, format) are in sight at once with them.
  */
 export default function TagCloud() {
   const groups = createMemo(() =>
@@ -75,8 +80,28 @@ export default function TagCloud() {
       { key: "people", tags: ordered(tagCounts.filter(([tag]) => namespaceKey(tag) === "person"), cloudSort(), 60) },
     ].filter((group) => group.tags.length > 0),
   );
+  const [whole, setWhole] = createSignal<string[]>([]);
+
+  // more of it below the dropdown's edge: the edge fades, so it reads as going on
+  let cloud: HTMLDivElement | undefined;
+  onSettled(() => {
+    const drop = cloud?.closest<HTMLElement>(".search-drop");
+    if (!drop) return;
+    const mark = () => drop.toggleAttribute("data-more", drop.scrollTop + drop.clientHeight < drop.scrollHeight - 2);
+    mark();
+    drop.addEventListener("scroll", mark, { passive: true });
+    const resized = new ResizeObserver(mark);
+    resized.observe(drop);
+    if (cloud) resized.observe(cloud);
+    return () => {
+      drop.removeEventListener("scroll", mark);
+      resized.disconnect();
+      drop.removeAttribute("data-more");
+    };
+  });
+
   return (
-    <div class="cloud">
+    <div class="cloud" ref={cloud}>
       <div class="cloud-bar">
         <CloudSortSwitch />
         <a class="cloud-more" href={withQuery("/tags", route().q)}>
@@ -88,7 +113,25 @@ export default function TagCloud() {
           <div class="cloud-row">
             <span class="cloud-label">{t().cloud[group.key as "popular"]}</span>
             <div class="cloud-tags">
-              <For each={group.tags}>{([tag, count]) => <Tag tag={tag} count={count} />}</For>
+              {(() => {
+                const limit = () => (whole().includes(group.key) ? Infinity : (SHOWN[group.key] ?? Infinity));
+                const rest = () => Math.max(0, group.tags.length - limit());
+                return (
+                  <>
+                    <For each={group.tags.slice(0, limit())}>{([tag, count]) => <Tag tag={tag} count={count} />}</For>
+                    <Show when={rest() > 0}>
+                      <button
+                        class="cloud-all"
+                        // (the field keeps the focus, as with a tag of the cloud)
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => setWhole([...whole(), group.key])}
+                      >
+                        {t().cloud.more(rest())}
+                      </button>
+                    </Show>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}

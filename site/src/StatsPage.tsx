@@ -85,6 +85,8 @@ function Hours(props: { hours: number[]; peak: number }) {
           {(count, hour) => (
             <div
               class={{ hour: true, peak: hour() === props.peak }}
+              // (the peak's label, at either end of the day, keeps inside the chart)
+              data-edge={hour() < 2 ? "start" : hour() > 21 ? "end" : undefined}
               style={{ "--peak-height": `${(count / max()) * 100}%` }}
               title={`${hour()}:00–${hour() + 1}:00 · ${count}`}
             >

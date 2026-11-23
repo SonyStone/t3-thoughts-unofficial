@@ -4,6 +4,7 @@ import { localized, type Entry, type Item } from "./content";
 import { formatDate, lang, t } from "./i18n";
 import { mentions } from "./clauses";
 import { openEntry, postHref, route } from "./route";
+import Counts from "./Counts";
 import { chapterMatcher } from "./search";
 import { sortTags, Tag } from "./Tag";
 import { VideoMap } from "./Video";
@@ -207,7 +208,7 @@ export function Tiles(props: { entries: Entry[] }) {
 function Row(props: { entry: Entry }) {
   const item = () => props.entry.latest;
   return (
-    <article class="row" data-weight={weightOf(props.entry)} {...open(props.entry)}>
+    <article class="row" data-weight={weightOf(props.entry)} data-kind={item().kind} {...open(props.entry)}>
       <div class="row-main">
         <EntryMeta item={item()} />
         <Title entry={props.entry} />
@@ -216,6 +217,8 @@ function Row(props: { entry: Entry }) {
           <p class="tile-thread">{t().tile.more(props.entry.items.length - 1)}</p>
         </Show>
         <TileTags entry={props.entry} />
+        {/* on a phone the list is headlines: the post itself gives way to its counts */}
+        <Counts metrics={item().metrics} />
       </div>
       <div class="row-post">
         <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>

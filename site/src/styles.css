@@ -1753,6 +1753,38 @@ html.intro .bar:has(.search.editing) {
   gap: 6px;
 }
 
+/* the rest of a long row, as a tag would sit there */
+.cloud-all {
+  padding: 3px 9px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .cloud-all:hover {
+    border-color: var(--muted);
+    color: var(--text);
+  }
+}
+
+/* more below the dropdown's edge (TagCloud): what is there fades into the panel, a strip that
+   stays at the bottom of the scrolled box (the box's own padding is under it too) */
+.search-drop[data-more]::after {
+  content: "";
+  position: sticky;
+  bottom: -14px;
+  display: block;
+  height: 56px;
+  margin: -56px -14px -14px;
+  background: linear-gradient(180deg, transparent, var(--panel));
+  pointer-events: none;
+}
+
 .cloud-label {
   padding-top: 4px;
   color: var(--muted);
@@ -1978,13 +2010,32 @@ html.intro .bar:has(.search.editing) {
   border-bottom: 1px solid var(--line);
 }
 
+/* each action says what it does in a word, then shows the query it makes */
 .tag-menu-actions button {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
   padding: 7px 8px;
   border: 0;
   border-radius: 8px;
   background: none;
   text-align: left;
   cursor: pointer;
+}
+
+.tag-menu-verb {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (hover: hover) {
+  .tag-menu-actions button:hover .tag-menu-verb {
+    color: var(--text-2);
+  }
 }
 
 @media (hover: hover) {
@@ -2121,9 +2172,10 @@ html.intro .bar:has(.search.editing) {
   }
 }
 
+/* a key post: the accent's star by its title, and a band of it along the card's top */
 .star {
   margin-right: 8px;
-  color: #ffc145;
+  color: var(--accent);
 }
 
 /* Tiles */
@@ -2157,9 +2209,28 @@ html.intro .bar:has(.search.editing) {
 }
 
 @media (hover: hover) {
-  .tile:hover {
-    border-color: var(--line-strong);
+  .tile:hover,
+  .row:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong));
   }
+}
+
+.tile[data-weight="3"],
+.row[data-weight="3"] {
+  position: relative;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+}
+
+/* (over the post's own black, which an inset shadow would be under) */
+.tile[data-weight="3"]::before,
+.row[data-weight="3"]::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 3px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .tile-media .x-card {
@@ -2256,12 +2327,6 @@ html.intro .bar:has(.search.editing) {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-}
-
-@media (hover: hover) {
-  .row:hover {
-    border-color: var(--line-strong);
-  }
 }
 
 .row-main {
@@ -2851,9 +2916,24 @@ html.intro .bar:has(.search.editing) {
   letter-spacing: 0.08em;
 }
 
+/* the dotted background gives way under the reading column, fading out at the edges rather
+   than ending in a hard rectangle */
 .post-page {
+  position: relative;
+  isolation: isolate;
+}
+
+.post-page::before {
+  content: "";
+  position: absolute;
+  inset: -40px -96px -64px;
+  z-index: -1;
   background: var(--bg);
-  box-shadow: 0 0 0 40px var(--bg);
+  mask-image:
+    linear-gradient(90deg, transparent, #000 96px, #000 calc(100% - 96px), transparent),
+    linear-gradient(180deg, transparent, #000 40px, #000 calc(100% - 96px), transparent);
+  mask-composite: intersect;
+  pointer-events: none;
 }
 
 .post-page .analysis {
@@ -3070,10 +3150,13 @@ html.intro .bar:has(.search.editing) {
   font-size: 0.88rem;
 }
 
+/* the figures in the title's typeface */
 .stat-value {
-  font-size: 2.2rem;
-  font-weight: 650;
-  line-height: 1.15;
+  font-family: var(--display);
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
 }
 
 .stat-note {
@@ -3219,6 +3302,7 @@ html.intro .bar:has(.search.editing) {
   vertical-align: -1px;
 }
 
+/* faint rules at a quarter, half and three quarters of the busiest hour */
 .hours {
   display: grid;
   grid-template-columns: repeat(24, 1fr);
@@ -3226,6 +3310,28 @@ html.intro .bar:has(.search.editing) {
   height: 140px;
   padding-top: 20px;
   border-bottom: 1px solid var(--line-strong);
+  background:
+    linear-gradient(var(--line), var(--line)) 0 calc(20px + 0 * 120px / 4) / 100% 1px no-repeat,
+    linear-gradient(var(--line), var(--line)) 0 calc(20px + 1 * 120px / 4) / 100% 1px no-repeat,
+    linear-gradient(var(--line), var(--line)) 0 calc(20px + 2 * 120px / 4) / 100% 1px no-repeat,
+    linear-gradient(var(--line), var(--line)) 0 calc(20px + 3 * 120px / 4) / 100% 1px no-repeat;
+}
+
+@media (hover: hover) {
+  .hour:hover .hour-bar {
+    background: color-mix(in srgb, var(--accent) 80%, var(--text));
+  }
+}
+
+.hour[data-edge="start"] .hour-value {
+  left: 0;
+  transform: none;
+}
+
+.hour[data-edge="end"] .hour-value {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .hour {
@@ -3810,7 +3916,7 @@ footer {
   }
 
   .stat-value {
-    font-size: 1.7rem;
+    font-size: 1.45rem;
   }
 
 
@@ -4173,4 +4279,31 @@ footer {
 /* the namespace squares on the heading's edge; a link's hover background reaches out past it */
 .tags-index {
   margin-left: -10px;
+}
+
+/* The list on a phone: headlines to scan, not the tiles again. Our line, the title, two lines
+   of what it is about, the tags and the post's counts; a video keeps its picture. */
+.row-main .counts {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  .rows {
+    gap: 10px;
+  }
+
+  .row:not([data-kind="video"]) .row-post {
+    display: none;
+  }
+
+  .row:not([data-kind="video"]) .row-summary {
+    display: -webkit-box;
+    margin-top: 6px;
+    -webkit-line-clamp: 2;
+    font-size: 0.92rem;
+  }
+
+  .row-main .counts {
+    display: flex;
+  }
 }

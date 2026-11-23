@@ -451,6 +451,7 @@ export default function TagMenu() {
                     closeMenu();
                   }}
                 >
+                  <span class="tag-menu-verb">{t().tagMenu.verbs[choice.action]}</span>
                   <QueryPreview query={choice.query} tag={open.tag} />
                 </button>
               )}
