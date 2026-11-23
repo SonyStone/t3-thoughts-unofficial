@@ -118,10 +118,11 @@ a {
   backdrop-filter: blur(10px);
 }
 
+/* (spaced by the row's gap, not a margin of its own: wrapped onto a row of its own, it starts on
+   the column's edge like everything else) */
 .head-search {
   flex: 1;
   min-width: 0;
-  margin-left: 12px;
 }
 
 .head-search .search {
@@ -650,7 +651,7 @@ main {
   /* the header row is at the ribbon's widest part, so it always keeps the ribbon's width free */
   .topnav.solid,
   .bar.stuck {
-    padding-right: 250px;
+    padding-right: max(250px, calc((100% - 1180px) / 2));
   }
 
   /* read from the top, the results line sits under the band too: its switch keeps clear of it
@@ -2067,10 +2068,17 @@ html.intro .bar:has(.search.editing) {
 .nothing {
   padding: 8px 14px;
   border: 1px solid var(--line-strong);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--panel);
   color: var(--text);
   cursor: pointer;
+}
+
+@media (hover: hover) {
+  .nothing:hover {
+    border-color: var(--muted);
+    background: var(--panel-2);
+  }
 }
 
 /* Our line above a post: kind, time, mood */
@@ -2647,6 +2655,11 @@ html.intro .bar:has(.search.editing) {
     display: none;
   }
 
+  /* a post's own page has no views in its bar: there is room for them */
+  .x-post.focused .x-action-end {
+    display: inline-flex;
+  }
+
   /* four counts in a phone's narrow tile: closer together (over the phone rule for the icons) */
   .x-actions {
     gap: 2px;
@@ -3025,15 +3038,20 @@ html.intro .bar:has(.search.editing) {
 
 /* Stats page: four figures in one ruled strip, then sections of bars divided by rules */
 
+/* (each figure spans three rows of the strip, label, number, note, so the numbers share a line
+   when a label wraps) */
 .figures {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-auto-rows: auto;
   margin: 28px 0 0;
   border-top: 1px solid var(--line);
 }
 
 .figure {
   display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
   align-content: start;
   gap: 4px;
   padding: 18px 24px;
@@ -4084,4 +4102,75 @@ footer {
   .search-field input:focus, .field:focus, .lang-list button:focus-visible {
     outline: 2px solid CanvasText;
   }
+}
+
+/* The corner ribbon and the header beside it. Below 1000px the band is smaller and scrolls away
+   with the header; whatever sits at the top right keeps out of its way. */
+@media (min-width: 701px) and (max-width: 1000px) {
+  /* the band crosses the header row about 80px in from the edge */
+  .topnav.solid {
+    padding-right: 84px;
+  }
+}
+
+@media (max-width: 700px) {
+  .ribbon-box {
+    width: 96px;
+    height: 96px;
+  }
+
+  .ribbon {
+    top: 19px;
+    right: -32px;
+    width: 136px;
+    padding: 3px 0;
+    font-size: 0.56rem;
+  }
+
+  /* over the video: the menu keeps clear of the band, and the language button goes under the
+     links when they leave no room for it (Russian on a narrow phone) */
+  .topnav:not(.solid) {
+    flex-wrap: wrap;
+    padding-right: 64px;
+  }
+
+  /* inside the card, the post above and our part under it share one inset */
+  .tile-body {
+    padding: 12px 12px 14px;
+  }
+
+  .row-main {
+    padding: 14px 12px;
+  }
+}
+
+@media (max-width: 380px) {
+  .nav-links a {
+    padding: 6px 9px;
+    font-size: 0.84rem;
+  }
+}
+
+/* an open language menu is over the band, not under it */
+.topnav:has(.lang-list) {
+  z-index: 11;
+}
+
+/* One focus ring for the keys, in the accent, where a control had only the browser's own */
+:is(.nav-links a, .lang-button, .segmented button, .tag, .chip, .search-clear, .search-done, .nothing, .tags-index a, .brand):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* between phone and laptop the frame is short for the title's floor-sized subtitle: the text
+   stands a little higher, so the subtitle keeps clear of the search under it */
+@media (min-width: 701px) and (max-width: 900px) {
+  .hero-text {
+    top: 24.5cqw;
+  }
+}
+
+/* the namespace squares on the heading's edge; a link's hover background reaches out past it */
+.tags-index {
+  margin-left: -10px;
 }

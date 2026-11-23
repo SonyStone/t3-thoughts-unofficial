@@ -16,3 +16,6 @@ state/*
 assets/avatar-source/
 assets/ribbon-reference.png
 assets/test-post-screenshot.png
+
+# throwaway browser scripts of agents
+site/scripts/.tmp-*

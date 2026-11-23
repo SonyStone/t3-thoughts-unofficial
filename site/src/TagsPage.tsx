@@ -104,7 +104,8 @@ export default function TagsPage() {
                   </h2>
                   <Show when={describe(vocabulary.namespaces[group.ns]) ?? t().tagsPage.about[group.ns]}>{(about) => <p class="muted small group-about">{about()}</p>}</Show>
                   <Show
-                    when={group.tags.some(([tag]) => describe(vocabulary.tags[tag]))}
+                    // (a description that only repeats the name counts as none: such a group is a cloud)
+                    when={group.tags.some(([tag]) => about(tag))}
                     fallback={
                       <div class="tag-cloud">
                         <For each={group.tags}>{([tag, count]) => <Tag tag={tag} count={count} />}</For>
@@ -116,7 +117,7 @@ export default function TagsPage() {
                         {([tag, count]) => (
                           <li>
                             <Tag tag={tag} />
-                            <span class={{ "tag-about": true, none: !about(tag) }}>{about(tag) ?? "—"}</span>
+                            <span class={{ "tag-about": true, none: !about(tag) }}>{about(tag)}</span>
                             <span class="tag-freq-count">{count}</span>
                           </li>
                         )}

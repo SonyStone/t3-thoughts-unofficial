@@ -173,7 +173,10 @@ function Feed() {
     <div class="feed">
       <div class="results">
         <p class="results-count" role="status">{!visible().length ? t().nothing : q() ? t().found(visible().length) : t().total(visible().length)}</p>
-        <ViewSwitch />
+        {/* nothing found: nothing to lay out either */}
+        <Show when={visible().length > 0}>
+          <ViewSwitch />
+        </Show>
       </div>
       <Show when={visible().length > 0} fallback={<button class="nothing" onClick={() => setQuery("")}>{t().clear}</button>}>
         <Show when={view() === "list"} fallback={<Tiles entries={visible()} />}>
