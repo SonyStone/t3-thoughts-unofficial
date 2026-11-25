@@ -3,14 +3,20 @@ import { createSignal, onSettled, Show } from "solid-js";
 import { reducedMotion } from "./motion";
 import { t } from "./i18n";
 import { claimIntro, credit, FPS, INTRO_FRAMES, playIntro } from "./intro";
+import loopWebmWide from "../../assets/header/loop-grok-1920.webm?url";
+import loopMp4Wide from "../../assets/header/loop-grok-1920.mp4?url";
 import loopWebm from "../../assets/header/loop-grok-1280.webm?url";
 import loopMp4 from "../../assets/header/loop-grok-1280.mp4?url";
 import loopWebmMobile from "../../assets/header/loop-grok-960.webm?url";
 import loopMp4Mobile from "../../assets/header/loop-grok-960.mp4?url";
+import introWebpWide from "../../assets/header/poster-1920.webp?url";
+import introJpgWide from "../../assets/header/poster-1920.jpg?url";
 import introWebp from "../../assets/header/poster-1280.webp?url";
 import introJpg from "../../assets/header/poster-1280.jpg?url";
 import introWebpMobile from "../../assets/header/poster-960.webp?url";
 import introJpgMobile from "../../assets/header/poster-960.jpg?url";
+import danceWebpWide from "../../assets/header/poster-loop-1920.webp?url";
+import danceJpgWide from "../../assets/header/poster-loop-1920.jpg?url";
 import danceWebp from "../../assets/header/poster-loop-1280.webp?url";
 import danceJpg from "../../assets/header/poster-loop-1280.jpg?url";
 import danceWebpMobile from "../../assets/header/poster-loop-960.webp?url";
@@ -22,8 +28,15 @@ import browserbase from "../../assets/header/credits/browserbase.svg?url";
 import coderabbitIcon from "../../assets/header/credits/coderabbit-icon.svg?url";
 import coderabbit from "../../assets/header/credits/coderabbit.svg?url";
 
-/** Same breakpoint as the phone header in styles.css. */
+/** Same breakpoint as the phone header in styles.css: phones get the 960 files, whatever their pixel density. */
 const MOBILE = "(max-width: 700px)";
+/**
+ * Where the 1920 files pay for their weight: the frame (the window's width, up to 1920) is
+ * wider than about 1500 device pixels. A video has no srcset, so this is said in pixels and
+ * density, and the posters use the same query: a poster sharper than its video would show
+ * the swap to the first frame.
+ */
+const WIDE = "(min-width: 1500px), (min-width: 1000px) and (min-resolution: 1.5dppx)";
 
 /**
  * After the intro the video has five takes of one dance that start and end in the crowd's
@@ -193,12 +206,17 @@ export default function Hero() {
         <picture>
           <source media={MOBILE} srcset={credits() ? introWebpMobile : danceWebpMobile} type="image/webp" />
           <source media={MOBILE} srcset={credits() ? introJpgMobile : danceJpgMobile} />
+          <source media={WIDE} srcset={credits() ? introWebpWide : danceWebpWide} type="image/webp" />
+          <source media={WIDE} srcset={credits() ? introJpgWide : danceJpgWide} />
           <source srcset={credits() ? introWebp : danceWebp} type="image/webp" />
           <img class="hero-media" src={credits() ? introJpg : danceJpg} alt="" fetchpriority="high" />
         </picture>
+        {/* the first source that matches wins; a browser that ignores media takes the first, the light one */}
         <video class="hero-media" ref={startAtDance} muted loop playsinline>
           <source media={MOBILE} src={loopWebmMobile} type="video/webm" />
           <source media={MOBILE} src={loopMp4Mobile} type="video/mp4" />
+          <source media={WIDE} src={loopWebmWide} type="video/webm" />
+          <source media={WIDE} src={loopMp4Wide} type="video/mp4" />
           <source src={loopWebm} type="video/webm" />
           <source src={loopMp4} type="video/mp4" />
         </video>

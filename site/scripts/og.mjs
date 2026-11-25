@@ -11,7 +11,7 @@ mkdirSync(out, { recursive: true });
 const data = (path, type) => `data:${type};base64,${readFileSync(resolve(site, path)).toString("base64")}`;
 const display = data("node_modules/@fontsource-variable/unbounded/files/unbounded-latin-wght-normal.woff2", "font/woff2");
 const text = data("node_modules/@fontsource-variable/golos-text/files/golos-text-latin-wght-normal.woff2", "font/woff2");
-const frame = data("../assets/header/poster-loop-1280.jpg", "image/jpeg");
+const frame = data("../assets/header/poster-loop-1920.jpg", "image/jpeg");
 
 const base = `
   @font-face { font-family: Display; src: url(${display}); font-weight: 100 900; }
