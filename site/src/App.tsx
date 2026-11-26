@@ -96,7 +96,7 @@ function PostPage() {
           );
         return (
           <>
-            <article class={{ page: true, "post-page": true, "arc-page": latest().kind === "arc" }} data-weight={weight()}>
+            <article class={{ page: true, "post-page": true, "arc-page": latest().kind === "arc" || Boolean(latest().sections) }} data-weight={weight()}>
               <a class="back" href={feedHref(route().q)}>
                 <Icon name="back" />
                 {t().backToFeed}
@@ -111,17 +111,29 @@ function PostPage() {
               <Show
                 when={latest().kind === "arc"}
                 fallback={
-                  <>
-                    <Show when={latest().kind === "video"} fallback={<XThread entry={open()} />}>
+                  <Show
+                    when={latest().kind === "video" && latest().sections}
+                    fallback={
+                      <>
+                        <Show when={latest().kind === "video"} fallback={<XThread entry={open()} />}>
+                          <VideoCard item={latest()}>
+                            <Counts metrics={latest().metrics} />
+                          </VideoCard>
+                        </Show>
+                        <h2 class="section-label">{t().breakdown}</h2>
+                        <Show when={latest().chapters} fallback={<Analyses entry={open()} />}>
+                          <Chapters item={latest()} />
+                        </Show>
+                      </>
+                    }
+                  >
+                    <>
                       <VideoCard item={latest()}>
                         <Counts metrics={latest().metrics} />
                       </VideoCard>
-                    </Show>
-                    <h2 class="section-label">{t().breakdown}</h2>
-                    <Show when={latest().chapters} fallback={<Analyses entry={open()} />}>
-                      <Chapters item={latest()} />
-                    </Show>
-                  </>
+                      <ArcBody item={latest()} />
+                    </>
+                  </Show>
                 }
               >
                 <ArcBody item={latest()} />

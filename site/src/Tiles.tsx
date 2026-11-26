@@ -131,7 +131,7 @@ function VideoThumb(props: { item: Item }) {
 function ChapterMap(props: { item: Item }) {
   const matcher = createMemo(() => chapterMatcher(route().q));
   return (
-    <Show when={props.item.chapters}>
+    <Show when={props.item.chapters && !props.item.sections}>
       <VideoMap item={props.item} matches={(chapter) => matcher()(chapter.tags)} />
     </Show>
   );

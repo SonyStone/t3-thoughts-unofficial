@@ -4,7 +4,7 @@ import { localized, type Item } from "./content";
 import { lang, t } from "./i18n";
 import { route } from "./route";
 import { chapterMatcher } from "./search";
-import { sortTags, Tag } from "./Tag";
+import { describe, sortTags, Tag } from "./Tag";
 import type { Chapter, ChapterText } from "./types";
 
 function clock(seconds: number): string {
@@ -27,14 +27,14 @@ function chapterTexts(item: Item): ChapterText[] {
 
 export function VideoCard(props: { item: Item; children?: JSX.Element }) {
   return (
-    <a class="video" href={props.item.url} target="_blank" rel="noreferrer">
+    <a class="video-card" href={props.item.url} target="_blank" rel="noreferrer">
       <img src={`https://i.ytimg.com/vi/${props.item.id}/hqdefault.jpg`} loading="lazy" alt="" />
       <div>
         <strong>{props.item.title}</strong>
         <Show when={props.item.duration}>
           <span class="muted"> · {props.item.duration}</span>
         </Show>
-        <Show when={props.item.chapters?.length}>
+        <Show when={!props.item.sections && props.item.chapters?.length}>
           {(count) => <span class="muted"> · {t().chapters(count())}</span>}
         </Show>
         <div class="muted small">YouTube ↗</div>
@@ -62,7 +62,7 @@ export function VideoMap(props: { item: Item; matches: (chapter: Chapter) => boo
             href={at(props.item, chapter.start)}
             target="_blank"
             rel="noreferrer"
-            title={`${clock(chapter.start)} · ${chapterTexts(props.item)[index()]?.title ?? ""}`}
+            title={`${clock(chapter.start)} · ${chapterTexts(props.item)[index()]?.title ?? describe(chapter.title) ?? ""}`}
           />
         )}
       </For>
