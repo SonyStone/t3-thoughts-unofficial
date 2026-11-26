@@ -82,6 +82,18 @@ function seconds(clock: string): number {
   return clock.split(":").reduce((total, part) => total * 60 + Number(part), 0);
 }
 
+function formatClock(totalSeconds: number): string {
+  const whole = Math.floor(totalSeconds);
+  const [h, m, s] = [Math.floor(whole / 3600), Math.floor((whole % 3600) / 60), whole % 60];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function videoAt(url: string | undefined, atSeconds: number): string {
+  if (!url) return "";
+  return `${url}${url.includes("?") ? "&" : "?"}t=${Math.floor(atSeconds)}s`;
+}
+
 /** A video body: the intro, then one `## [MM:SS] Title` section per chapter. */
 function splitChapters(body: string): { intro: string; chapters: { start: number; title: string; body: string }[] } {
   const parts = body.split(new RegExp(CHAPTER_HEADING.source, "m"));
@@ -92,12 +104,25 @@ function splitChapters(body: string): { intro: string; chapters: { start: number
   return { intro: parts[0], chapters };
 }
 
-/** An arc body: optional intro, then one `## Title` section per chapter. */
-function splitSections(body: string): { intro: string; sections: { title: string; body: string }[] } {
+const LEADING_DEK = /^\s*((?:>[^\n]*(?:\n|$))+)/;
+
+/** An arc body: optional intro, then one `## Title` section per chapter (with optional leading `> dek`). */
+function splitSections(body: string): { intro: string; sections: { title: string; dek?: string; body: string }[] } {
   const parts = body.split(new RegExp(SECTION_HEADING.source, "m"));
   const sections = [];
   for (let i = 1; i + 1 < parts.length; i += 2) {
-    sections.push({ title: parts[i].trim(), body: parts[i + 1] ?? "" });
+    let rawBody = parts[i + 1] ?? "";
+    let dek: string | undefined;
+    const match = rawBody.match(LEADING_DEK);
+    if (match) {
+      dek = match[1]
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^>\s?/, "").trim())
+        .filter(Boolean)
+        .join(" ");
+      rawBody = rawBody.slice(match[0].length);
+    }
+    sections.push({ title: parts[i].trim(), dek, body: rawBody });
   }
   return { intro: parts[0], sections };
 }
@@ -166,30 +191,40 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     quoted,
     video: meta.video ?? undefined,
     metrics: metrics(meta.metrics),
-    html: meta.kind === "arc" || (meta.kind === "video" && Array.isArray(meta.chapters)) ? "" : render(body),
+    html:
+      meta.kind === "arc" || (meta.kind === "video" && (Array.isArray(meta.chapters) || Array.isArray(meta.sections)))
+        ? ""
+        : render(body),
     translations: {},
   };
 
-  if (meta.kind === "video" && Array.isArray(meta.chapters)) {
+  const isSectioned = meta.kind === "arc" || (meta.kind === "video" && Array.isArray(meta.sections));
+
+  if (meta.kind === "video" && (Array.isArray(meta.chapters) || Array.isArray(meta.sponsors))) {
     const total = meta.duration ? seconds(String(meta.duration)) : undefined;
-    const { intro, chapters: sections } = splitChapters(body);
-    if (sections.length !== meta.chapters.length) {
-      console.warn(`${path}: ${meta.chapters.length} chapters in frontmatter, ${sections.length} sections in the text`);
-    }
     item.seconds = total;
-    item.html = render(intro);
-    item.chapterText = sections.map((section) => ({ title: section.title, html: render(section.body) }));
-    item.chapters = meta.chapters.map((chapter: any, index: number) => {
-      const own = resolveTags(chapter.tags ?? [], [], file);
-      return {
-        start: Number(chapter.start ?? 0),
-        end: Number(meta.chapters[index + 1]?.start ?? total ?? chapter.start),
-        tags: own.tags,
-        ownTags: own.ownTags,
-        weight: Number(chapter.weight ?? 2),
-        sponsor: chapter.sponsor ?? undefined,
-      };
-    });
+    if (Array.isArray(meta.chapters)) {
+      if (!isSectioned) {
+        const { intro, chapters: sections } = splitChapters(body);
+        if (sections.length !== meta.chapters.length) {
+          console.warn(`${path}: ${meta.chapters.length} chapters in frontmatter, ${sections.length} sections in the text`);
+        }
+        item.html = render(intro);
+        item.chapterText = sections.map((section) => ({ title: section.title, html: render(section.body) }));
+      }
+      item.chapters = meta.chapters.map((chapter: any, index: number) => {
+        const own = resolveTags(chapter.tags ?? [], [], file);
+        return {
+          start: Number(chapter.start ?? 0),
+          end: Number(meta.chapters[index + 1]?.start ?? total ?? chapter.start),
+          tags: own.tags,
+          ownTags: own.ownTags,
+          weight: Number(chapter.weight ?? 2),
+          sponsor: chapter.sponsor ?? undefined,
+          title: chapter.title,
+        };
+      });
+    }
     item.sponsors = (meta.sponsors ?? []).map((sponsor: any) => ({
       name: String(sponsor.name),
       url: sponsor.url,
@@ -199,11 +234,12 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     }));
     // the video is found by everything its chapters are about, and by its sponsors
     const sponsorTags = item.sponsors!.map((sponsor) => `sponsor:${sponsor.name.toLowerCase().replace(/\s+/g, "-")}`);
-    item.tags = [...new Set([...item.tags, ...item.chapters!.flatMap((chapter) => chapter.tags), ...sponsorTags])];
+    const chapterTags = (item.chapters ?? []).flatMap((chapter) => chapter.tags);
+    item.tags = [...new Set([...item.tags, ...chapterTags, ...sponsorTags])];
     item.ownTags = [...new Set([...item.ownTags, ...sponsorTags])];
   }
 
-  if (meta.kind === "arc") {
+  if (isSectioned) {
     const dir = dirname(path);
     const { intro, sections: parsed } = splitSections(body);
     const metaSections = Array.isArray(meta.sections) ? meta.sections : [];
@@ -220,16 +256,25 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     item.sections = parsed.map((sec, index) => {
       const def = metaSections[index] ?? {};
       const own = resolveTags(def.tags ?? [], [], file);
+      const tone = def.tone === "accent" || def.tone === "ok" || def.tone === "muted" ? def.tone : undefined;
+      const at = def.at !== undefined ? Number(def.at) : undefined;
+      const time = def.time ? String(def.time) : at !== undefined ? formatClock(at) : undefined;
+      const videoUrl = def.videoUrl ? String(def.videoUrl) : at !== undefined && item.url ? videoAt(item.url, at) : undefined;
       return {
         id: String(def.id ?? `section-${index + 1}`),
         tags: own.tags,
         ownTags: own.ownTags,
         collapsible: Boolean(def.collapsible),
+        badge: def.badge,
+        tone,
+        time,
+        videoUrl,
       };
     });
     item.sectionText = parsed.map((sec, index) => ({
       id: item.sections![index].id,
       title: sec.title,
+      dek: sec.dek ? marked.parseInline(sec.dek, { async: false }) : undefined,
       html: enhanceArcLinks(render(sec.body), context.knownPostIds, !item.sections![index].collapsible),
     }));
     if (meta.embeds && typeof meta.embeds === "object") {
@@ -251,18 +296,19 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     if (meta.frames && typeof meta.frames === "object") {
       const frames: Record<string, ArcFrameEmbed> = {};
       for (const [key, rawFrame] of Object.entries(meta.frames as Record<string, any>)) {
+        const at = rawFrame.at !== undefined ? Number(rawFrame.at) : undefined;
         frames[key] = {
           id: key,
           src: registerAsset(String(rawFrame.src), dir, context.root, context.assets),
-          videoUrl: String(rawFrame.videoUrl),
-          time: String(rawFrame.time),
-          videoTitle: String(rawFrame.videoTitle),
+          videoUrl: rawFrame.videoUrl ? String(rawFrame.videoUrl) : at !== undefined ? videoAt(item.url, at) : String(item.url ?? ""),
+          time: rawFrame.time ? String(rawFrame.time) : at !== undefined ? formatClock(at) : "0:00",
+          videoTitle: rawFrame.videoTitle ? String(rawFrame.videoTitle) : undefined,
           caption: rawFrame.caption,
         };
       }
       item.frames = frames;
     }
-    // the arc is found by every section's tags as well as its own
+    // the entry is found by every section's tags as well as its own
     item.tags = [...new Set([...item.tags, ...item.sections.flatMap((section) => section.tags)])];
   }
   return item;
@@ -295,14 +341,7 @@ function readFolder(dir: string, day: string | undefined, context: Context, file
       continue;
     }
     const render = (markdown: string) => renderMarkdown(markdown, dir, context.root, context.assets);
-    if (item.chapters) {
-      const { intro, chapters } = splitChapters(parts.body);
-      item.translations[match[2]] = {
-        title: parts.meta.title ?? item.title,
-        html: render(intro),
-        chapters: chapters.map((chapter) => ({ title: chapter.title, html: render(chapter.body) })),
-      };
-    } else if (item.sections) {
+    if (item.sections) {
       const { intro, sections } = splitSections(parts.body);
       item.translations[match[2]] = {
         title: parts.meta.title ?? item.title,
@@ -311,8 +350,16 @@ function readFolder(dir: string, day: string | undefined, context: Context, file
         sections: sections.map((section, index) => ({
           id: item.sections![index]?.id ?? `section-${index + 1}`,
           title: section.title,
+          dek: section.dek ? marked.parseInline(section.dek, { async: false }) : undefined,
           html: enhanceArcLinks(render(section.body), context.knownPostIds, !item.sections![index]?.collapsible),
         })),
+      };
+    } else if (item.chapters) {
+      const { intro, chapters } = splitChapters(parts.body);
+      item.translations[match[2]] = {
+        title: parts.meta.title ?? item.title,
+        html: render(intro),
+        chapters: chapters.map((chapter) => ({ title: chapter.title, html: render(chapter.body) })),
       };
     } else {
       item.translations[match[2]] = { title: parts.meta.title ?? item.title, html: render(parts.body) };

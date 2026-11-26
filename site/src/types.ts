@@ -15,17 +15,23 @@ export type Metrics = {
 /** `<id>.<lang>.md` next to the English `<id>.md`: a translated title and analysis. */
 export type Translation = { title: string; summary?: string; html: string; chapters?: ChapterText[]; sections?: ArcSectionText[] };
 
-/** One section (`## Heading`) of an editorial arc, with its own tags for search and highlighting. */
+/** One section (`## Heading`) of an editorial arc or video article, with its own tags for search and highlighting. */
 export type ArcSection = {
   id: string;
   tags: string[];
   ownTags: string[];
   collapsible?: boolean;
+  badge?: Described;
+  tone?: "accent" | "ok" | "muted";
+  /** Optional timestamp link for video-backed sections. */
+  time?: string;
+  videoUrl?: string;
 };
 
 export type ArcSectionText = {
   id: string;
   title: string;
+  dek?: string;
   html: string;
 };
 
@@ -41,13 +47,13 @@ export type ArcPostEmbed = {
   metrics?: Metrics;
 };
 
-/** A timestamped video frame embedded inside an arc as an illustration. */
+/** A timestamped video frame embedded inside an arc or video article as an illustration. */
 export type ArcFrameEmbed = {
   id: string;
   src: string;
   videoUrl: string;
   time: string;
-  videoTitle: string;
+  videoTitle?: string;
   caption: Described;
 };
 
@@ -62,6 +68,7 @@ export type Chapter = {
   ownTags: string[];
   weight: number;
   sponsor?: string;
+  title?: Described;
 };
 
 export type Sponsor = {

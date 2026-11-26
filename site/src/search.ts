@@ -60,19 +60,19 @@ const docs: Doc[] = entries.map((entry) => ({
         foreignText(item.quoted),
         stripHtml(item.html),
         ...(item.chapterText ?? []).flatMap((chapter) => [chapter.title, stripHtml(chapter.html)]),
-        ...(item.sectionText ?? []).flatMap((section) => [section.title, stripHtml(section.html)]),
+        ...(item.sectionText ?? []).flatMap((section) => [section.title, stripHtml(section.dek ?? ""), stripHtml(section.html)]),
         ...Object.values(item.embeds ?? {}).flatMap((embed) => [
           embed.text,
           foreignText(embed.parent),
           foreignText(embed.quoted),
         ]),
-        ...Object.values(item.frames ?? {}).flatMap((frame) => [frame.videoTitle, describedText(frame.caption)]),
+        ...Object.values(item.frames ?? {}).flatMap((frame) => [frame.videoTitle ?? "", describedText(frame.caption)]),
         ...Object.values(item.translations).flatMap((translation) => [
           translation.title,
           translation.summary,
           stripHtml(translation.html),
           ...(translation.chapters ?? []).flatMap((chapter) => [chapter.title, stripHtml(chapter.html)]),
-          ...(translation.sections ?? []).flatMap((section) => [section.title, stripHtml(section.html)]),
+          ...(translation.sections ?? []).flatMap((section) => [section.title, stripHtml(section.dek ?? ""), stripHtml(section.html)]),
         ]),
       ].join(" "),
     )

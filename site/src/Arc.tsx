@@ -33,7 +33,7 @@ function sectionTexts(item: Item): { list: ArcSectionText[]; fallback: boolean }
 /** Combined EN + RU text of one section plus any X/frame embeds inside it. */
 function sectionSearchText(item: Item, index: number): string {
   const en = item.sectionText?.[index];
-  const parts: string[] = en ? [en.title, stripHtml(en.html)] : [];
+  const parts: string[] = en ? [en.title, stripHtml(en.dek ?? ""), stripHtml(en.html)] : [];
   const rawHtml = en?.html ?? "";
   for (const match of rawHtml.matchAll(EMBED_RE)) {
     const [, kind, id] = match;
@@ -42,12 +42,12 @@ function sectionSearchText(item: Item, index: number): string {
       if (embed) parts.push(embed.text, foreignText(embed.parent), foreignText(embed.quoted));
     } else if (kind === "frame") {
       const frame = item.frames?.[id];
-      if (frame) parts.push(frame.videoTitle, describedText(frame.caption));
+      if (frame) parts.push(frame.videoTitle ?? "", describedText(frame.caption));
     }
   }
   for (const tr of Object.values(item.translations)) {
     const sec = tr.sections?.[index];
-    if (sec) parts.push(sec.title, stripHtml(sec.html));
+    if (sec) parts.push(sec.title, stripHtml(sec.dek ?? ""), stripHtml(sec.html));
   }
   return parts.join(" ");
 }
@@ -106,11 +106,13 @@ function withActiveQuery(html: string): string {
   });
 }
 
-/** Full magazine-style view of an editorial arc with per-section tags, inline X cards and video frames. */
+/** Open magazine-style view of an editorial arc: crisp takeaways at the top, straight reading flow below, caveats/sources collapsed at the foot. */
 export function ArcBody(props: { item: Item }) {
   const matcher = createMemo(() => sectionMatcher(route().q));
   const resolved = createMemo(() => sectionTexts(props.item));
   const texts = () => resolved().list;
+  const loc = createMemo(() => localized(props.item, lang()));
+
   const matches = (index: number) =>
     !props.item.sections![index].collapsible &&
     matcher()(props.item.sections![index].tags, sectionSearchText(props.item, index));
@@ -130,14 +132,17 @@ export function ArcBody(props: { item: Item }) {
 
   return (
     <div class="arc-body">
-      <div class="arc-meta-strip">
-        <Show when={props.item.sourcesCount}>
-          {(count) => <span>{t().arc.sources(count())}</span>}
-        </Show>
-        <Show when={props.item.council}>
-          {(who) => <span>{t().arc.writtenBy(who())}</span>}
-        </Show>
-      </div>
+      <Show when={loc().summary}>
+        {(summary) => <p class="arc-lead">{summary()}</p>}
+      </Show>
+
+      <Show when={props.item.sourcesCount}>
+        {(count) => (
+          <div class="arc-meta-strip">
+            <span>{t().arc.sources(count())}</span>
+          </div>
+        )}
+      </Show>
 
       <Show when={matchedSections().length > 0}>
         <div class="arc-matched-bar">
@@ -152,38 +157,66 @@ export function ArcBody(props: { item: Item }) {
         </div>
       </Show>
 
-      <Show when={localized(props.item, lang()).fallback || resolved().fallback}>
+      <Show when={loc().fallback || resolved().fallback}>
         <p class="muted small">{t().noTranslation}</p>
       </Show>
 
-      <Show when={localized(props.item, lang()).html.trim()}>
-        <div class="analysis" innerHTML={withActiveQuery(localized(props.item, lang()).html)} />
+      <Show when={loc().html.trim()}>
+        <div class="analysis arc-takeaways" innerHTML={withActiveQuery(loc().html)} />
       </Show>
 
       <For each={props.item.sections ?? []}>
         {(section, index) => {
           const text = () => texts()[index()];
+          const badge = () => describe(section.badge);
           return (
             <Show
               when={!section.collapsible}
               fallback={
                 <details class="arc-sources" id={`arc-${section.id}`}>
-                  <summary>{t().arc.viewSources(props.item.sourcesCount ?? 0)}</summary>
+                  <summary>
+                    {props.item.sourcesCount ? t().arc.viewSources(props.item.sourcesCount) : text()?.title}
+                  </summary>
+                  <Show when={props.item.council}>
+                    {(who) => <p class="arc-sources-credit">{t().arc.writtenBy(who())}</p>}
+                  </Show>
                   <div class="analysis" innerHTML={text()?.html ?? ""} />
                 </details>
               }
             >
               <section
-                class={{ "arc-section": true, match: matches(index()) }}
+                class={{
+                  "arc-section": true,
+                  match: matches(index()),
+                  [`tone-${section.tone}`]: !!section.tone,
+                }}
                 id={`arc-${section.id}`}
                 tabindex="-1"
               >
                 <header class="arc-section-head">
-                  <h2>{text()?.title}</h2>
-                  <Show when={section.ownTags.length > 0}>
-                    <div class="tags arc-section-tags">
-                      <For each={sortTags(section.ownTags)}>{(tag) => <Tag tag={tag} />}</For>
-                    </div>
+                  <div class="arc-section-top">
+                    <h2>{text()?.title}</h2>
+                    <Show when={badge() || (section.time && section.videoUrl)}>
+                      <div class="arc-section-badges">
+                        <Show when={badge()}>
+                          {(label) => <span class="arc-badge">{label()}</span>}
+                        </Show>
+                        <Show when={section.time && section.videoUrl}>
+                          <a
+                            class="arc-badge arc-badge-time"
+                            href={section.videoUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={t().openAt(section.time!)}
+                          >
+                            {section.time} ↗
+                          </a>
+                        </Show>
+                      </div>
+                    </Show>
+                  </div>
+                  <Show when={text()?.dek}>
+                    {(dek) => <p class="arc-section-dek" innerHTML={dek()} />}
                   </Show>
                 </header>
                 <For each={splitEmbeds(text()?.html ?? "")}>
@@ -211,12 +244,18 @@ export function ArcBody(props: { item: Item }) {
                               <img
                                 src={frame().src}
                                 loading="lazy"
-                                alt={describe(frame().caption) ?? frame().videoTitle}
+                                alt={describe(frame().caption) ?? frame().videoTitle ?? ""}
                               />
                               <span class="arc-frame-time">{t().openAt(frame().time)} ↗</span>
                             </a>
                             <figcaption>
-                              <strong>{frame().videoTitle}</strong> — {describe(frame().caption)}
+                              <Show when={frame().videoTitle} fallback={describe(frame().caption)}>
+                                {(videoTitle) => (
+                                  <>
+                                    <strong>{videoTitle()}</strong> — {describe(frame().caption)}
+                                  </>
+                                )}
+                              </Show>
                             </figcaption>
                           </figure>
                         )}
@@ -224,6 +263,11 @@ export function ArcBody(props: { item: Item }) {
                     )
                   }
                 </For>
+                <Show when={section.ownTags.length > 0}>
+                  <div class="tags arc-section-tags">
+                    <For each={sortTags(section.ownTags)}>{(tag) => <Tag tag={tag} />}</For>
+                  </div>
+                </Show>
               </section>
             </Show>
           );
