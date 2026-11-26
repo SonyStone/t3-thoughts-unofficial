@@ -19,6 +19,11 @@ export const items: Item[] = rawItems.map((item) => ({ ...item, createdAt: new D
 
 const byId = new Map(items.map((item) => [item.id, item]));
 
+/** Look up any item in content/ by its id (used by arcs to link to existing post breakdowns). */
+export function itemById(id: string): Item | undefined {
+  return byId.get(id);
+}
+
 function linked(post: ForeignPost | "unavailable" | undefined): Item | undefined {
   if (!post || post === "unavailable") return undefined;
   const id = post.url?.match(STATUS_ID)?.[1];
@@ -59,11 +64,11 @@ export const entries: Entry[] = [...groups.values()]
   })
   .sort((a, b) => b.latest.createdAt.getTime() - a.latest.createdAt.getTime());
 
-/** Title and analysis in `lang`, falling back to the English original. */
-export function localized(item: Item, lang: string): { title: string; html: string; fallback: boolean } {
-  if (lang === "en") return { title: item.title, html: item.html, fallback: false };
+/** Title, summary and analysis in `lang`, falling back to the English original. */
+export function localized(item: Item, lang: string): { title: string; summary?: string; html: string; fallback: boolean } {
+  if (lang === "en") return { title: item.title, summary: item.summary, html: item.html, fallback: false };
   const translation = item.translations[lang];
-  return translation ? { ...translation, fallback: false } : { title: item.title, html: item.html, fallback: true };
+  return translation ? { ...translation, summary: translation.summary ?? item.summary, fallback: false } : { title: item.title, summary: item.summary, html: item.html, fallback: true };
 }
 
 export type MetricKey = "likes" | "views" | "replies" | "reposts" | "quotes" | "bookmarks" | "comments";

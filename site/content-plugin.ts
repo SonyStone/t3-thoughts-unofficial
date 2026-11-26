@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { marked } from "marked";
 import type { Plugin } from "vite";
 import { parse as parseYaml } from "yaml";
-import type { ForeignPost, RawItem, Skip, Vocabulary } from "./src/types.ts";
+import type { ArcFrameEmbed, ArcPostEmbed, ForeignPost, RawItem, Skip, Vocabulary } from "./src/types.ts";
 
 const MODULE_ID = "virtual:content";
 const RESOLVED_ID = "\0" + MODULE_ID;
@@ -76,6 +76,7 @@ function metrics(value: unknown): RawItem["metrics"] {
 }
 
 const CHAPTER_HEADING = /^## \[(\d+(?::\d{2}){1,2})\] (.+)$/m;
+const SECTION_HEADING = /^## (.+)$/m;
 
 function seconds(clock: string): number {
   return clock.split(":").reduce((total, part) => total * 60 + Number(part), 0);
@@ -91,18 +92,49 @@ function splitChapters(body: string): { intro: string; chapters: { start: number
   return { intro: parts[0], chapters };
 }
 
+/** An arc body: optional intro, then one `## Title` section per chapter. */
+function splitSections(body: string): { intro: string; sections: { title: string; body: string }[] } {
+  const parts = body.split(new RegExp(SECTION_HEADING.source, "m"));
+  const sections = [];
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    sections.push({ title: parts[i].trim(), body: parts[i + 1] ?? "" });
+  }
+  return { intro: parts[0], sections };
+}
+
+function registerAsset(src: string, dir: string, root: string, assets: Set<string>): string {
+  if (/^[a-z]+:|^\//i.test(src)) return src;
+  const path = relative(root, join(dir, src));
+  assets.add(path);
+  return `content-files/${path}`;
+}
+
 /** Images next to a markdown file become `content-files/<path from the repo root>`, see `assets` below. */
 function renderMarkdown(markdown: string, dir: string, root: string, assets: Set<string>): string {
   const html = marked.parse(markdown, { async: false });
   return html.replace(/(<img[^>]*\ssrc=")([^"]+)"/g, (whole, head, src) => {
     if (/^[a-z]+:|^\//i.test(src)) return whole;
-    const path = relative(root, join(dir, src));
-    assets.add(path);
-    return `${head}content-files/${path}"`;
+    return `${head}${registerAsset(src, dir, root, assets)}"`;
   });
 }
 
-type Context = { root: string; file: TagsFile; assets: Set<string> };
+/**
+ * In arc prose, links to X posts we already have in content/ open our own post page;
+ * all other external links open in a new tab.
+ */
+function enhanceArcLinks(html: string, knownPostIds: Set<string>, rewriteInternal: boolean): string {
+  return html.replace(/<a href="(https?:\/\/[^"]+)">/g, (whole, href: string) => {
+    if (rewriteInternal) {
+      const match = href.match(/^https:\/\/x\.com\/theo\/status\/(\d+)$/);
+      if (match && knownPostIds.has(match[1])) {
+        return `<a href="#/post/${match[1]}" class="internal-post" data-x-url="${href}">`;
+      }
+    }
+    return `<a href="${href}" target="_blank" rel="noreferrer">`;
+  });
+}
+
+type Context = { root: string; file: TagsFile; assets: Set<string>; knownPostIds: Set<string> };
 
 function parseItem(day: string | undefined, path: string, raw: string, context: Context): RawItem | undefined {
   const parts = split(path, raw);
@@ -134,7 +166,7 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     quoted,
     video: meta.video ?? undefined,
     metrics: metrics(meta.metrics),
-    html: render(body),
+    html: meta.kind === "arc" || (meta.kind === "video" && Array.isArray(meta.chapters)) ? "" : render(body),
     translations: {},
   };
 
@@ -169,6 +201,69 @@ function parseItem(day: string | undefined, path: string, raw: string, context: 
     const sponsorTags = item.sponsors!.map((sponsor) => `sponsor:${sponsor.name.toLowerCase().replace(/\s+/g, "-")}`);
     item.tags = [...new Set([...item.tags, ...item.chapters!.flatMap((chapter) => chapter.tags), ...sponsorTags])];
     item.ownTags = [...new Set([...item.ownTags, ...sponsorTags])];
+  }
+
+  if (meta.kind === "arc") {
+    const dir = dirname(path);
+    const { intro, sections: parsed } = splitSections(body);
+    const metaSections = Array.isArray(meta.sections) ? meta.sections : [];
+    if (parsed.length !== metaSections.length) {
+      console.warn(`${path}: ${metaSections.length} sections in frontmatter, ${parsed.length} sections in the text`);
+    }
+    item.from = meta.from ? String(meta.from) : undefined;
+    item.to = meta.to ? String(meta.to) : undefined;
+    item.summary = meta.summary ? String(meta.summary) : undefined;
+    item.sourcesCount = meta.sourcesCount ? Number(meta.sourcesCount) : undefined;
+    item.council = meta.council ? String(meta.council) : undefined;
+    if (meta.cover) item.cover = registerAsset(String(meta.cover), dir, context.root, context.assets);
+    item.html = enhanceArcLinks(render(intro), context.knownPostIds, true);
+    item.sections = parsed.map((sec, index) => {
+      const def = metaSections[index] ?? {};
+      const own = resolveTags(def.tags ?? [], [], file);
+      return {
+        id: String(def.id ?? `section-${index + 1}`),
+        tags: own.tags,
+        ownTags: own.ownTags,
+        collapsible: Boolean(def.collapsible),
+      };
+    });
+    item.sectionText = parsed.map((sec, index) => ({
+      id: item.sections![index].id,
+      title: sec.title,
+      html: enhanceArcLinks(render(sec.body), context.knownPostIds, !item.sections![index].collapsible),
+    }));
+    if (meta.embeds && typeof meta.embeds === "object") {
+      const embeds: Record<string, ArcPostEmbed> = {};
+      for (const [key, rawEmbed] of Object.entries(meta.embeds as Record<string, any>)) {
+        embeds[key] = {
+          id: String(rawEmbed.id ?? key),
+          url: String(rawEmbed.url),
+          createdAt: new Date(rawEmbed.createdAt).toISOString(),
+          text: String(rawEmbed.text ?? "").trimEnd(),
+          media: rawEmbed.media ?? [],
+          parent: foreign(rawEmbed.parent),
+          quoted: foreign(rawEmbed.quoted),
+          metrics: metrics(rawEmbed.metrics),
+        };
+      }
+      item.embeds = embeds;
+    }
+    if (meta.frames && typeof meta.frames === "object") {
+      const frames: Record<string, ArcFrameEmbed> = {};
+      for (const [key, rawFrame] of Object.entries(meta.frames as Record<string, any>)) {
+        frames[key] = {
+          id: key,
+          src: registerAsset(String(rawFrame.src), dir, context.root, context.assets),
+          videoUrl: String(rawFrame.videoUrl),
+          time: String(rawFrame.time),
+          videoTitle: String(rawFrame.videoTitle),
+          caption: rawFrame.caption,
+        };
+      }
+      item.frames = frames;
+    }
+    // the arc is found by every section's tags as well as its own
+    item.tags = [...new Set([...item.tags, ...item.sections.flatMap((section) => section.tags)])];
   }
   return item;
 }
@@ -207,6 +302,18 @@ function readFolder(dir: string, day: string | undefined, context: Context, file
         html: render(intro),
         chapters: chapters.map((chapter) => ({ title: chapter.title, html: render(chapter.body) })),
       };
+    } else if (item.sections) {
+      const { intro, sections } = splitSections(parts.body);
+      item.translations[match[2]] = {
+        title: parts.meta.title ?? item.title,
+        summary: parts.meta.summary ? String(parts.meta.summary) : undefined,
+        html: enhanceArcLinks(render(intro), context.knownPostIds, true),
+        sections: sections.map((section, index) => ({
+          id: item.sections![index]?.id ?? `section-${index + 1}`,
+          title: section.title,
+          html: enhanceArcLinks(render(section.body), context.knownPostIds, !item.sections![index]?.collapsible),
+        })),
+      };
     } else {
       item.translations[match[2]] = { title: parts.meta.title ?? item.title, html: render(parts.body) };
     }
@@ -229,7 +336,7 @@ function readAll(root: string, previewDirs: string[]) {
     drop: [],
     ...(existsSync(tagsPath) ? parseYaml(readFileSync(tagsPath, "utf8")) : {}),
   };
-  const context: Context = { root, file, assets };
+  const context: Context = { root, file, assets, knownPostIds: new Set() };
 
   const items: RawItem[] = [];
   const contentDir = join(root, "content");
@@ -237,6 +344,11 @@ function readAll(root: string, previewDirs: string[]) {
     items.push(...readFolder(join(contentDir, day), day, context, files));
   }
   for (const dir of previewDirs) items.push(...readFolder(join(root, dir), undefined, context, files, true));
+  for (const item of items) context.knownPostIds.add(item.id);
+  const arcsDir = join(contentDir, "arcs");
+  if (existsSync(arcsDir)) {
+    items.push(...readFolder(arcsDir, undefined, context, files));
+  }
   items.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   // only the day and the reason: the dropped text itself never reaches the site

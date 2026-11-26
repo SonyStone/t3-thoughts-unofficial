@@ -1,6 +1,7 @@
 import { vocabulary } from "virtual:content";
-import { entries, type Entry, type MetricKey } from "./content";
+import { entries, type Entry, type Kind, type MetricKey } from "./content";
 import { parseQuery, type Query } from "./query";
+import type { Described } from "./types";
 
 /**
  * Search over entries with the syntax from query.ts. Besides tags (with * wildcards and
@@ -20,6 +21,7 @@ type Doc = {
   tags: Set<string>;
   kinds: Set<string>;
   days: string[];
+  ranges: [string, string][];
   weight: number;
   text: string;
 };
@@ -30,6 +32,11 @@ function foreignText(post: Entry["latest"]["parent"]): string {
   return post && post !== "unavailable" ? `${post.author} ${post.name ?? ""} ${post.text ?? ""}` : "";
 }
 
+function describedText(value: Described | undefined): string {
+  if (!value) return "";
+  return typeof value === "string" ? value : Object.values(value).join(" ");
+}
+
 const METRICS: MetricKey[] = ["likes", "views", "replies", "reposts", "quotes", "bookmarks", "comments"];
 
 const docs: Doc[] = entries.map((entry) => ({
@@ -37,6 +44,7 @@ const docs: Doc[] = entries.map((entry) => ({
   tags: new Set(entry.items.flatMap((item) => item.tags)),
   kinds: new Set(entry.items.map((item) => item.kind)),
   days: entry.items.map((item) => item.day),
+  ranges: entry.items.flatMap((item) => (item.from && item.to ? [[item.from, item.to] as [string, string]] : [])),
   weight: Math.max(...entry.items.map((item) => item.weight)),
   metrics: Object.fromEntries(
     METRICS.map((key) => [key, Math.max(-1, ...entry.items.map((item) => item.metrics?.[key] ?? -1))]),
@@ -46,15 +54,25 @@ const docs: Doc[] = entries.map((entry) => ({
     .map((item) =>
       [
         item.title,
+        item.summary,
         item.text,
         foreignText(item.parent),
         foreignText(item.quoted),
         stripHtml(item.html),
         ...(item.chapterText ?? []).flatMap((chapter) => [chapter.title, stripHtml(chapter.html)]),
+        ...(item.sectionText ?? []).flatMap((section) => [section.title, stripHtml(section.html)]),
+        ...Object.values(item.embeds ?? {}).flatMap((embed) => [
+          embed.text,
+          foreignText(embed.parent),
+          foreignText(embed.quoted),
+        ]),
+        ...Object.values(item.frames ?? {}).flatMap((frame) => [frame.videoTitle, describedText(frame.caption)]),
         ...Object.values(item.translations).flatMap((translation) => [
           translation.title,
+          translation.summary,
           stripHtml(translation.html),
           ...(translation.chapters ?? []).flatMap((chapter) => [chapter.title, stripHtml(chapter.html)]),
+          ...(translation.sections ?? []).flatMap((section) => [section.title, stripHtml(section.html)]),
         ]),
       ].join(" "),
     )
@@ -91,8 +109,20 @@ function wildcard(pattern: string): RegExp {
   return new RegExp(`^${pattern.split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*")}$`);
 }
 
+function compareRange(from: string, to: string, spec: string): boolean {
+  const match = spec.match(/^(>=|<=|>|<)?(.*)$/)!;
+  const [, op, target] = match;
+  if (op === ">") return to > target;
+  if (op === "<") return from < target;
+  if (op === ">=") return to >= target;
+  if (op === "<=") return from <= target;
+  return from <= target && target <= to;
+}
+
+const ENTRY_ONLY_FIELD = /^(kind|date|weight|sort|likes|views|replies|reposts|quotes|bookmarks|comments):/i;
+
 /** Turns one term into a test, resolving aliases and bare names of namespaced tags. */
-function term(raw: string): Node {
+function term(raw: string, sectionMode = false): Node {
   const text = raw.trim().toLowerCase();
   const phrase = text.match(/^"(.*)"?$/);
   if (phrase) {
@@ -102,13 +132,20 @@ function term(raw: string): Node {
   const field = text.match(/^(kind|date|weight|text|sort|likes|views|replies|reposts|quotes|bookmarks|comments):(.*)$/);
   if (field) {
     const [, name, value] = field;
+    if (sectionMode && name !== "text") return { op: "term", test: () => true };
     // `sort:likes` orders the results (see sortOf) and filters nothing
     if (name === "sort") return { op: "term", test: () => true };
     if ((METRICS as string[]).includes(name)) {
       return { op: "term", test: (doc) => (doc.metrics[name as MetricKey] ?? -1) >= 0 && compare(doc.metrics[name as MetricKey]!, value) };
     }
     if (name === "kind") return { op: "term", test: (doc) => doc.kinds.has(value) };
-    if (name === "date") return { op: "term", test: (doc) => doc.days.some((day) => compare(day, value)) };
+    if (name === "date") {
+      return {
+        op: "term",
+        test: (doc) =>
+          doc.days.some((day) => compare(day, value)) || doc.ranges.some(([from, to]) => compareRange(from, to, value)),
+      };
+    }
     if (name === "weight") return { op: "term", test: (doc) => compare(doc.weight, value) };
     const needle = value.replace(/^"|"$/g, "");
     return { op: "term", test: (doc) => doc.text.includes(needle) };
@@ -131,10 +168,16 @@ function run(node: Node, doc: Doc): boolean {
   return node.children.some((child) => run(child, doc));
 }
 
-function compile(query: Query): Node {
-  if (query.op === "term") return term(query.raw);
-  if (query.op === "not") return { op: "not", child: compile(query.child) };
-  return { op: query.op, children: query.children.map(compile) };
+function compile(query: Query, sectionMode = false): Node {
+  if (query.op === "term") return term(query.raw, sectionMode);
+  if (query.op === "not") {
+    // Negated entry-level fields (-kind:repost) already passed on the arc; don't invert them into false on sections
+    if (sectionMode && query.child.op === "term" && ENTRY_ONLY_FIELD.test(query.child.raw.trim())) {
+      return { op: "term", test: () => true };
+    }
+    return { op: "not", child: compile(query.child, sectionMode) };
+  }
+  return { op: query.op, children: query.children.map((child) => compile(child, sectionMode)) };
 }
 
 function positives(query: Query): Query[] {
@@ -151,7 +194,7 @@ export function chapterMatcher(query: string): (tags: string[]) => boolean {
   const parsed = parseQuery(query);
   if (!parsed) return () => false;
   const tree = compile(parsed);
-  const named = positives(parsed).map(compile);
+  const named = positives(parsed).map((q) => compile(q));
   return (tags) => {
     const doc: Doc = {
       entry: entries[0],
@@ -159,8 +202,37 @@ export function chapterMatcher(query: string): (tags: string[]) => boolean {
       tags: new Set(tags),
       kinds: new Set(),
       days: [],
+      ranges: [],
       weight: 0,
       text: "",
+    };
+    return run(tree, doc) && named.some((node) => run(node, doc));
+  };
+}
+
+/**
+ * Which arc sections a query matches: preserves the full Boolean query tree (AND, OR, NOT)
+ * against each section's tags and EN/RU text (including embeds), while treating entry-level
+ * fields (kind, date, weight, sort, metrics) as already satisfied by the arc.
+ */
+export function sectionMatcher(query: string): (tags: string[], text: string) => boolean {
+  const parsed = parseQuery(query);
+  if (!parsed) return () => false;
+  const tree = compile(parsed, true);
+  const named = positives(parsed)
+    .filter((q) => q.op === "term" && !ENTRY_ONLY_FIELD.test(q.raw.trim()))
+    .map((q) => compile(q, true));
+  if (named.length === 0) return () => false;
+  return (tags, text) => {
+    const doc: Doc = {
+      entry: entries[0],
+      metrics: {},
+      tags: new Set(tags),
+      kinds: new Set(["arc"]),
+      days: [],
+      ranges: [],
+      weight: 3,
+      text: text.toLowerCase(),
     };
     return run(tree, doc) && named.some((node) => run(node, doc));
   };
@@ -180,8 +252,13 @@ export function sortOf(query: string): SortKey {
   return match ? (match[1].toLowerCase() as SortKey) : "new";
 }
 
+const ALL_KINDS: Kind[] = ["arc", "video", "post", "reply", "quote", "repost"];
+
 /** Not tags, but terms worth suggesting; -1 means no count to show. */
 const SPECIAL: [string, number][] = [
+  ...ALL_KINDS.map(
+    (kind) => [`kind:${kind}`, entries.filter((entry) => entry.items.some((item) => item.kind === kind)).length] as [string, number],
+  ).filter(([, count]) => count > 0),
   ["sort:likes", -1],
   ["sort:views", -1],
 ];

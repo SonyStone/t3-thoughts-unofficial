@@ -8,7 +8,7 @@ import { search, tagCounts, tagLastSeen } from "./search";
 import { namespaceKey, Tag } from "./Tag";
 
 const TOPICAL = new Set(["product", "model", "company", "tech", "sponsor", "topic"]);
-const KINDS: Kind[] = ["video", "post", "reply", "quote", "repost"];
+const KINDS: Kind[] = ["arc", "video", "post", "reply", "quote", "repost"];
 
 const kindCounts = KINDS.map((kind) => [`kind:${kind}`, entries.filter((entry) => entry.items.some((item) => item.kind === kind)).length] as [string, number])
   .filter(([, count]) => count > 0);

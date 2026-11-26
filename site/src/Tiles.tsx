@@ -7,6 +7,7 @@ import { openEntry, postHref, route } from "./route";
 import Counts from "./Counts";
 import { chapterMatcher } from "./search";
 import { sortTags, Tag } from "./Tag";
+import { ArcPreview, formatArcPeriod } from "./Arc";
 import { VideoMap } from "./Video";
 import { XCompact } from "./XPost";
 
@@ -21,7 +22,7 @@ function estimate(entry: Entry): number {
   const original = item.kind === "repost" && item.quoted && item.quoted !== "unavailable" ? item.quoted : undefined;
   const text = (original?.text ?? item.text ?? "").length;
   const parent = item.parent && item.parent !== "unavailable" ? 44 : 0;
-  const media = item.media.length > 0 || item.kind === "video" ? 200 : 0;
+  const media = item.media.length > 0 || item.kind === "video" || item.kind === "arc" ? 200 : 0;
   return 250 + Math.min(text, 300) * 0.5 + parent + media;
 }
 
@@ -64,12 +65,16 @@ const weightOf = (entry: Entry) => Math.max(...entry.items.map((each) => each.we
 /** Kind, time and Theo's mood: our line above the post, not part of it. */
 export function EntryMeta(props: { item: Item }) {
   const mood = () => props.item.ownTags.find((tag) => tag.startsWith("mood:"));
+  const when = () =>
+    props.item.kind === "arc" && props.item.from && props.item.to
+      ? formatArcPeriod(props.item)
+      : formatDate(props.item.createdAt, DATE_FORMAT);
   return (
     <div class="entry-meta">
       <span class="kind" data-kind={props.item.kind}>
         {t().kind[props.item.kind]}
       </span>
-      <span>{formatDate(props.item.createdAt, DATE_FORMAT)}</span>
+      <span>{when()}</span>
       <Show when={mood()}>{(tag) => <Tag tag={tag()} />}</Show>
     </div>
   );
@@ -81,7 +86,7 @@ function Title(props: { entry: Entry }) {
       <Show when={weightOf(props.entry) >= 3}>
         <span class="star" title={t().main}>★</span>
       </Show>
-      <a href={postHref(props.entry.latest.id)} onClick={(event) => event.stopPropagation()}>
+      <a href={postHref(props.entry.latest.id, props.entry.latest.kind)} onClick={(event) => event.stopPropagation()}>
         {localized(props.entry.latest, lang()).title}
       </a>
     </h3>
@@ -141,9 +146,11 @@ function VideoPreview(props: { item: Item }) {
   );
 }
 
-/** The first paragraph of our breakdown, as plain text. */
+/** The summary or first paragraph of our breakdown, as plain text. */
 function summary(item: Item): string {
-  const html = localized(item, lang()).html;
+  const loc = localized(item, lang());
+  if (loc.summary) return loc.summary;
+  const html = loc.html;
   const first = html.match(/<p>([\s\S]*?)<\/p>/)?.[1] ?? html;
   const div = document.createElement("div");
   div.innerHTML = first;
@@ -155,8 +162,8 @@ function open(entry: Entry) {
     if ((event.target as Element).closest("a, button") || hasCardSelection(event.currentTarget as Element)) return;
     if (event.button === 1 || event.metaKey || event.ctrlKey) {
       event.preventDefault();
-      window.open(postHref(entry.latest.id), "_blank", "noopener");
-    } else if (event.button === 0) openEntry(entry.latest.id);
+      window.open(postHref(entry.latest.id, entry.latest.kind), "_blank", "noopener");
+    } else if (event.button === 0) openEntry(entry.latest.id, entry.latest.kind);
   };
   return {
     // the posts it opens on, for Back from one to put the focus here again (scroll.ts)
@@ -169,11 +176,18 @@ function open(entry: Entry) {
 function Tile(props: { entry: Entry }) {
   const item = () => props.entry.latest;
   return (
-    <article class={{ tile: true, video: item().kind === "video" }} data-weight={weightOf(props.entry)} {...open(props.entry)}>
+    <article class={{ tile: true, video: item().kind === "video", arc: item().kind === "arc" }} data-weight={weightOf(props.entry)} {...open(props.entry)}>
       {/* a card in the Material sense: the original across the top, our part under it */}
       <div class="tile-media">
-        <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>
-          <VideoThumb item={item()} />
+        <Show
+          when={item().kind === "arc"}
+          fallback={
+            <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>
+              <VideoThumb item={item()} />
+            </Show>
+          }
+        >
+          <ArcPreview item={item()} />
         </Show>
       </div>
       <div class="tile-body">
@@ -221,8 +235,15 @@ function Row(props: { entry: Entry }) {
         <Counts metrics={item().metrics} />
       </div>
       <div class="row-post">
-        <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>
-          <VideoPreview item={item()} />
+        <Show
+          when={item().kind === "arc"}
+          fallback={
+            <Show when={item().kind === "video"} fallback={<XCompact item={item()} lines={5} />}>
+              <VideoPreview item={item()} />
+            </Show>
+          }
+        >
+          <ArcPreview item={item()} />
         </Show>
       </div>
     </article>

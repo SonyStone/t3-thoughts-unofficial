@@ -15,7 +15,8 @@ function clock(seconds: number): string {
 }
 
 function at(item: Item, seconds: number): string {
-  return `${item.url}${item.url.includes("?") ? "&" : "?"}t=${Math.floor(seconds)}s`;
+  const url = item.url ?? "";
+  return `${url}${url.includes("?") ? "&" : "?"}t=${Math.floor(seconds)}s`;
 }
 
 /** Chapter titles and text in the current language; a translation counts only if it has every chapter. */

@@ -16,6 +16,7 @@ import { sortTags, Tag } from "./Tag";
 import TagMenu from "./TagMenu";
 import TagsPage from "./TagsPage";
 import { EntryMeta, List, Tiles } from "./Tiles";
+import { ArcBody } from "./Arc";
 import { Chapters, VideoCard } from "./Video";
 import { XThread } from "./XPost";
 import Counts from "./Counts";
@@ -95,7 +96,7 @@ function PostPage() {
           );
         return (
           <>
-            <article class="page post-page" data-weight={weight()}>
+            <article class={{ page: true, "post-page": true, "arc-page": latest().kind === "arc" }} data-weight={weight()}>
               <a class="back" href={feedHref(route().q)}>
                 <Icon name="back" />
                 {t().backToFeed}
@@ -107,14 +108,23 @@ function PostPage() {
                 </Show>
                 {localized(latest(), lang()).title}
               </h1>
-              <Show when={latest().kind === "video"} fallback={<XThread entry={open()} />}>
-                <VideoCard item={latest()}>
-                  <Counts metrics={latest().metrics} />
-                </VideoCard>
-              </Show>
-              <h2 class="section-label">{t().breakdown}</h2>
-              <Show when={latest().chapters} fallback={<Analyses entry={open()} />}>
-                <Chapters item={latest()} />
+              <Show
+                when={latest().kind === "arc"}
+                fallback={
+                  <>
+                    <Show when={latest().kind === "video"} fallback={<XThread entry={open()} />}>
+                      <VideoCard item={latest()}>
+                        <Counts metrics={latest().metrics} />
+                      </VideoCard>
+                    </Show>
+                    <h2 class="section-label">{t().breakdown}</h2>
+                    <Show when={latest().chapters} fallback={<Analyses entry={open()} />}>
+                      <Chapters item={latest()} />
+                    </Show>
+                  </>
+                }
+              >
+                <ArcBody item={latest()} />
               </Show>
               <Show when={tags().length > 0}>
                 <div class="tags">

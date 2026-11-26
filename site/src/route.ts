@@ -16,7 +16,7 @@ function read(): Route {
   const [path, search] = cut < 0 ? [hash, ""] : [hash.slice(0, cut), hash.slice(cut + 1)];
   const params = new URLSearchParams(search);
   const q = params.get("q") ?? "";
-  const post = path.match(/^\/post\/([\w-]+)$/);
+  const post = path.match(/^\/(?:post|arc)\/([\w-]+)$/);
   if (post) return { page: "post", q, id: post[1] };
   // links from before entries had pages of their own: #/?open=<id>
   const open = params.get("open");
@@ -74,8 +74,8 @@ export function feedHref(q: string): string {
   return withQuery("/", q);
 }
 
-export function postHref(id: string): string {
-  return withQuery(`/post/${id}`, route().q);
+export function postHref(id: string, kind?: string): string {
+  return withQuery(`/${kind === "arc" ? "arc" : "post"}/${id}`, route().q);
 }
 
 /**
@@ -87,8 +87,8 @@ export function setQuery(q: string) {
   go(feedHref(q));
 }
 
-export function openEntry(id: string) {
-  go(postHref(id));
+export function openEntry(id: string, kind?: string) {
+  go(postHref(id, kind));
 }
 
 /**

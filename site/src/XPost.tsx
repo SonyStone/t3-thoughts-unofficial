@@ -1,4 +1,5 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
+import type { ArcPostEmbed } from "./types";
 import { hasCardSelection } from "./cardSelection";
 import { answersFeed, previous, type Entry, type ForeignPost, type Item, type Metrics } from "./content";
 import { formatCount, formatDate, formatTightCount, t } from "./i18n";
@@ -419,6 +420,29 @@ export function XCompact(props: { item: Item; lines?: number }) {
         above={original() ? t().reposted : undefined}
       >
         <Show when={quoted()}>{(post) => <XQuote post={post()} />}</Show>
+      </XStep>
+    </div>
+  );
+}
+
+/** A standalone X post embedded inside an arc as inline evidence (with parent/quote if present). */
+export function XEmbed(props: { post: ArcPostEmbed }) {
+  const parent = () => (props.post.parent && props.post.parent !== "unavailable" ? props.post.parent : undefined);
+  return (
+    <div class="x-card">
+      <Show when={parent()}>
+        {(post) => <XStep post={post()} href={post().url} line context text={post().text} media={post().media} />}
+      </Show>
+      <XStep
+        post={THEO}
+        at={new Date(props.post.createdAt)}
+        href={props.post.url}
+        line={false}
+        text={props.post.text}
+        media={props.post.media}
+        metrics={props.post.metrics}
+      >
+        <Show when={props.post.quoted}>{(quoted) => <XQuote post={quoted()} />}</Show>
       </XStep>
     </div>
   );
